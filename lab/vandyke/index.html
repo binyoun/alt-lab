@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Van Dyke brown · The Alternative Process Lab</title>
+<link rel="stylesheet" href="../../css/main.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="site-title" href="../../">The Alternative Process Lab</a>
+    <nav class="site-nav">
+      <a href="../" class="active">Lab</a>
+      <a href="../../history/">History</a>
+      <a href="../../about/">About</a>
+    </nav>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer class="site-footer">
+  <div class="wrap">Every process runs in your browser. No photograph is uploaded.</div>
+</footer>
+
+<script type="module">
+  import config from '../../js/processes/vandyke.js';
+  import { startRitual } from '../../js/engine/ritual.js';
+  startRitual(document.getElementById('app'), config);
+</script>
+</body>
+</html>
