@@ -26,10 +26,11 @@ float fbm(vec2 p) {
 }`;
 
 // Paper with visible fiber: long horizontal grain plus fine tooth.
+// amp scales the fiber relief; coated surfaces like albumen sit near 0.3.
 export const PAPER = `
-vec3 paperColor(vec2 uv, vec3 base) {
+vec3 paperColor(vec2 uv, vec3 base, float amp) {
   float fiber = fbm(uv * vec2(180.0, 60.0)) * 0.5 + fbm(uv * 700.0) * 0.5;
-  float shade = 1.0 - (fiber - 0.5) * 0.10;
+  float shade = 1.0 - (fiber - 0.5) * 0.10 * amp;
   float vig = 1.0 - 0.12 * pow(distance(uv, vec2(0.5)) * 1.4, 2.0);
   return base * shade * vig;
 }`;

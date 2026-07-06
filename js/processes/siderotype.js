@@ -18,6 +18,8 @@ export function buildSiderotype(opts) {
     bronzeStart = 2.8,
     bronzeEnd = 5.0,
     exposedStrength = 1.0, // how loudly the image prints out before the bath
+    fiber = 1.0,           // paper texture relief; coated papers sit low
+    gloss = 0.0,           // surface sheen lifting the highlights (albumen)
   } = opts.look;
 
   const fragment = `#version 300 es
@@ -46,7 +48,7 @@ float lightAt(float L) {
 }
 
 vec3 printColor(vec2 uv, float m, float L, float E) {
-  vec3 paper = paperColor(uv, ${v3(paper)});
+  vec3 paper = paperColor(uv, ${v3(paper)}, ${fiber.toFixed(3)});
   if (m < 0.01) return paper;
   float x = E * lightAt(L) * 2.6;
   float d = 1.0 - exp(-x);
@@ -60,12 +62,15 @@ vec3 printColor(vec2 uv, float m, float L, float E) {
   vec3 col = mix(paper, deepC, d);
   float bz = smoothstep(${bronzeStart.toFixed(2)}, ${bronzeEnd.toFixed(2)}, x);
   col = mix(col, ${v3(bronze)}, bz * 0.45);
+  float sheen = fbm(uv * vec2(40.0, 220.0));
+  col = mix(col, col * 1.07 + vec3(0.035, 0.030, 0.012) * sheen,
+    ${gloss.toFixed(3)} * (1.0 - d));
   return col;
 }
 
 // Coated (and possibly exposing) paper, before the bath.
 vec3 sensitizedColor(vec2 uv, float m, float L, float E) {
-  vec3 paper = paperColor(uv, ${v3(paper)});
+  vec3 paper = paperColor(uv, ${v3(paper)}, ${fiber.toFixed(3)});
   vec3 sensC = paper * ${v3(sens)};
   vec3 col = mix(paper, sensC, clamp(m * 1.1, 0.0, 0.9));
   if (m < 0.01 || E <= 0.0) return col;
