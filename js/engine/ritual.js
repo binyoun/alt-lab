@@ -1,10 +1,23 @@
 // The ritual runner: walks a photograph through a process config,
 // stage by stage, entirely on the visitor's device.
+//
+// Stage behavior comes from stage.type (defaulting by id):
+//   upload | info | paint | hold | reveal | result
+// The shader receives u_stage = the stage's index in config.stages.
 
 import { createGL } from './gl.js';
 import { createBrush } from './brush.js';
 
 const MAX_CANVAS = 1600;
+
+const DEFAULT_TYPE = {
+  upload: 'upload',
+  negative: 'info',
+  coat: 'paint',
+  expose: 'hold',
+  wash: 'reveal',
+  result: 'result',
+};
 
 export function startRitual(root, config) {
   // ---- DOM scaffold -------------------------------------------------
@@ -42,7 +55,6 @@ export function startRitual(root, config) {
   for (const s of config.stages) {
     const span = document.createElement('span');
     span.textContent = s.title;
-    span.dataset.stage = s.id;
     stepsEl.appendChild(span);
   }
 
@@ -56,6 +68,7 @@ export function startRitual(root, config) {
     exposing: false,
     wash: 0,
     washing: false,
+    tilt: 0,
     adj: 1,
     contrast: 1,
     tone: 0,
@@ -63,7 +76,15 @@ export function startRitual(root, config) {
   };
 
   const stageIndex = (id) => config.stages.findIndex((s) => s.id === id);
-  const stageNum = { negative: 1, coat: 2, expose: 3, wash: 4, result: 5 };
+  const stageType = (s) => s.type || DEFAULT_TYPE[s.id] || 'info';
+  const firstPaint = () =>
+    config.stages.find((s) => stageType(s) === 'paint') || config.stages[1];
+
+  function autoApply(stage) {
+    if ((stage && stage.auto) === 'pour') state.brush.autoPour(config.margin);
+    else state.brush.autoCoat(config.margin);
+    state.maskDirty = true;
+  }
 
   // ---- image loading ---------------------------------------------------
   function loadFile(file) {
@@ -97,9 +118,7 @@ export function startRitual(root, config) {
   });
 
   function beginRitual() {
-    const iw = state.image.width;
-    const ih = state.image.height;
-    const aspect = iw / ih;
+    const aspect = state.image.width / state.image.height;
     let w, h;
     if (aspect >= 1) { w = MAX_CANVAS; h = Math.round(MAX_CANVAS / aspect); }
     else { h = MAX_CANVAS; w = Math.round(MAX_CANVAS * aspect); }
@@ -118,17 +137,19 @@ export function startRitual(root, config) {
       u_adj: 1,
       u_contrast: 1,
       u_tone: 0,
+      u_tilt: 0,
     });
 
     state.exposure = 0;
     state.wash = 0;
+    state.tilt = 0;
     state.adj = 1;
     state.contrast = 1;
     state.tone = 0;
 
     uploadPanel.hidden = true;
     canvas.hidden = false;
-    setStage('negative');
+    setStage(config.stages[1].id);
   }
 
   // ---- stage machine -------------------------------------------------
@@ -140,28 +161,27 @@ export function startRitual(root, config) {
       span.classList.toggle('done', i < idx);
     });
     const stage = config.stages[idx];
+    const type = stageType(stage);
     captionEl.innerHTML = stage.caption;
-    skipEl.hidden = !(id === 'negative' || id === 'coat' || id === 'expose' || id === 'wash');
-    buildControls(id, stage);
+    skipEl.hidden = type === 'upload' || type === 'result';
+    buildControls(type, stage);
   }
 
-  function buildControls(id, stage) {
+  function buildControls(type, stage) {
     controlsEl.innerHTML = '';
-    if (id === 'negative') {
-      addButton(stage.next, () => setStage('coat'));
-    } else if (id === 'coat') {
-      addButton('Coat for me', () => {
-        state.brush.autoCoat(config.margin);
-        state.maskDirty = true;
-      }, 'ghost');
+    if (type === 'info') {
+      addButton(stage.next, () => advance(stage));
+    } else if (type === 'paint') {
+      addButton(stage.autoLabel || 'Coat for me', () => autoApply(stage), 'ghost');
       addButton(stage.next, () => {
         if (state.brush.coverage() < 0.04) {
-          captionEl.innerHTML = 'The paper is still bare. Brush some sensitizer on, or let the studio coat it for you.';
+          captionEl.innerHTML = stage.bareText ||
+            'The surface is still bare. Work it with your finger or pointer, or let the studio do it for you.';
           return;
         }
-        setStage('expose');
+        advance(stage);
       });
-    } else if (id === 'expose') {
+    } else if (type === 'hold') {
       const meterWrap = document.createElement('div');
       meterWrap.className = 'meter';
       meterWrap.innerHTML = '<div></div><span class="ideal"></span>';
@@ -169,10 +189,10 @@ export function startRitual(root, config) {
         (config.idealExposure / config.maxExposure) * 100 + '%';
       const label = document.createElement('span');
       label.className = 'meter-label';
-      label.textContent = 'no sun yet';
+      label.textContent = 'not yet exposed';
       const hold = document.createElement('button');
       hold.className = 'btn hold';
-      hold.textContent = 'Hold in the sun';
+      hold.textContent = stage.holdLabel || 'Hold in the sun';
       hold.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         hold.setPointerCapture(e.pointerId);
@@ -187,17 +207,18 @@ export function startRitual(root, config) {
       state.meterLabel = label;
       addButton(stage.next, () => {
         if (state.exposure < 0.05) {
-          captionEl.innerHTML = 'The paper has not seen the sun. Hold the print out a while first.';
+          captionEl.innerHTML = stage.noLightText ||
+            'No light has reached it yet. Hold the exposure a while first.';
           return;
         }
-        setStage('wash');
+        advance(stage);
       });
-    } else if (id === 'wash') {
-      addButton(stage.next, function washNow() {
+    } else if (type === 'reveal') {
+      addButton(stage.next, function revealNow() {
         this.disabled = true;
         state.washing = true;
       });
-    } else if (id === 'result') {
+    } else if (type === 'result') {
       const sliders = document.createElement('div');
       sliders.className = 'sliders';
       addSlider(sliders, 'Exposure', 0.5, 1.6, state.adj, (v) => {
@@ -216,20 +237,25 @@ export function startRitual(root, config) {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;justify-content:center;';
       controlsEl.appendChild(row);
-      addButton('Download the print', downloadPrint, '', row);
-      addButton('Print again', () => {
+      addButton(config.downloadLabel || 'Download the print', downloadPrint, '', row);
+      addButton('Make another', () => {
         state.brush.clear();
         state.maskDirty = true;
         state.exposure = 0;
         state.wash = 0;
-        setStage('coat');
+        setStage(firstPaint().id);
       }, 'ghost', row);
       addButton('New photograph', () => {
         canvas.hidden = true;
         uploadPanel.hidden = false;
-        setStage('upload');
+        setStage(config.stages[0].id);
       }, 'ghost', row);
     }
+  }
+
+  function advance(stage) {
+    const idx = config.stages.indexOf(stage);
+    setStage(config.stages[idx + 1].id);
   }
 
   function addButton(label, fn, cls = '', parent = controlsEl) {
@@ -255,16 +281,13 @@ export function startRitual(root, config) {
   }
 
   el('[data-skip]').addEventListener('click', () => {
-    if (state.brush.coverage() < 0.04) {
-      state.brush.autoCoat(config.margin);
-      state.maskDirty = true;
-    }
+    if (state.brush.coverage() < 0.04) autoApply(firstPaint());
     if (state.exposure < 0.2) state.exposure = config.idealExposure;
     state.wash = 1;
-    setStage('result');
+    setStage(config.stages[config.stages.length - 1].id);
   });
 
-  // ---- coat painting ---------------------------------------------------
+  // ---- canvas pointer: painting, and tilt on the finished plate --------
   function maskPoint(e) {
     const r = canvas.getBoundingClientRect();
     return [
@@ -273,47 +296,56 @@ export function startRitual(root, config) {
     ];
   }
   canvas.addEventListener('pointerdown', (e) => {
-    if (state.stage !== 'coat') return;
+    if (stageType(config.stages[stageIndex(state.stage)]) !== 'paint') return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     state.brush.begin(...maskPoint(e));
     state.maskDirty = true;
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (state.stage !== 'coat' || e.buttons === 0) return;
-    state.brush.moveTo(...maskPoint(e));
-    state.maskDirty = true;
+    const type = stageType(config.stages[stageIndex(state.stage)]);
+    if (type === 'paint' && e.buttons !== 0) {
+      state.brush.moveTo(...maskPoint(e));
+      state.maskDirty = true;
+    } else if (type === 'result') {
+      const r = canvas.getBoundingClientRect();
+      state.tilt = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
+    }
   });
   canvas.addEventListener('pointerup', () => state.brush && state.brush.end());
+  canvas.addEventListener('pointerleave', () => { state.tilt *= 0.0; });
 
   // ---- render loop -----------------------------------------------------
   let lastT = performance.now();
+  let shownTilt = 0;
   function frame(t) {
     const dt = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
     if (state.gl && !canvas.hidden) {
-      if (state.exposing && state.stage === 'expose') {
+      if (state.exposing) {
         state.exposure = Math.min(config.maxExposure, state.exposure + config.exposureRate * dt);
         state.meterFill.style.width = (state.exposure / config.maxExposure) * 100 + '%';
-        const min = Math.round(state.exposure * config.exposureMinutes);
-        state.meterLabel.textContent = 'about ' + min + ' min of sun';
+        const n = Math.round(state.exposure * config.exposureScale);
+        state.meterLabel.textContent = `about ${n} ${config.exposureUnit}`;
       }
       if (state.washing) {
         state.wash = Math.min(1, state.wash + dt / 2.6);
         if (state.wash >= 1) {
           state.washing = false;
-          setStage('result');
+          setStage(config.stages[config.stages.length - 1].id);
         }
       }
       if (state.maskDirty) {
         state.gl.setTexture('u_mask', state.brush.canvas);
         state.maskDirty = false;
       }
+      shownTilt += (state.tilt - shownTilt) * Math.min(1, dt * 6);
       state.gl.set({
-        u_stage: stageNum[state.stage] || 5,
+        u_stage: stageIndex(state.stage),
         u_exposure: state.exposure,
         u_wash: state.wash,
         u_time: t / 1000,
+        u_tilt: shownTilt,
       });
       state.gl.draw();
     }

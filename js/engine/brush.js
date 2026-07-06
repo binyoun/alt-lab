@@ -84,6 +84,29 @@ export function createBrush(width, height) {
     end();
   }
 
+  // Collodion pour: one generous puddle tilted across the plate,
+  // with thin corners and a drip or two.
+  function autoPour(margin) {
+    clear();
+    const inset = margin * 0.4;
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    const R = Math.min(width, height) * 0.30;
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.pow(Math.random(), 0.6);
+      const x = cx + Math.cos(a) * d * (width * 0.5 - width * inset - R * 0.5);
+      const y = cy + Math.sin(a) * d * (height * 0.5 - height * inset - R * 0.5);
+      stamp(x, y, R * (0.7 + Math.random() * 0.5), 0.5);
+    }
+    // a drip running off one edge
+    const dx = width * (0.2 + Math.random() * 0.6);
+    for (let y = height * 0.75; y < height; y += radius * 0.4) {
+      stamp(dx + Math.sin(y * 0.02) * radius, y, radius * 0.8, 0.4);
+    }
+    end();
+  }
+
   // Rough coverage estimate, sampled coarsely.
   function coverage() {
     const data = ctx.getImageData(0, 0, width, height).data;
@@ -95,5 +118,5 @@ export function createBrush(width, height) {
     return sum / (n * 255);
   }
 
-  return { canvas, begin, moveTo, end, clear, autoCoat, coverage };
+  return { canvas, begin, moveTo, end, clear, autoCoat, autoPour, coverage };
 }

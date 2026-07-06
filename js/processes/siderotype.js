@@ -130,6 +130,8 @@ void main() {
     idealExposure: 1.0,
     maxExposure: 2.4,
     exposureRate: 0.22,
+    exposureScale: opts.meta.exposureMinutes,
+    exposureUnit: 'min of sun',
     ...opts.meta,
     fragment,
     stages: opts.stages,
