@@ -264,6 +264,51 @@ canvas.print {
 .prose p { margin-bottom: 16px; color: var(--ink-dim); }
 .prose p strong { color: var(--ink); }
 
+/* History timeline */
+.timeline {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 60px 20px;
+}
+.timeline > h1 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; }
+.timeline > .lede { color: var(--ink-dim); margin: 14px 0 40px; }
+.chapter {
+  border-left: 1px solid var(--line);
+  padding: 0 0 44px 28px;
+  position: relative;
+}
+.chapter::before {
+  content: '';
+  position: absolute;
+  left: -4px; top: 10px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.chapter .year {
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  color: var(--ink);
+}
+.chapter h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.15rem;
+  margin: 2px 0 10px;
+  color: var(--ink-dim);
+}
+.chapter p { color: var(--ink-dim); margin-bottom: 12px; font-size: 0.95rem; }
+.chapter .try {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  padding: 6px 14px;
+}
+.chapter .try:hover { border-color: var(--accent); text-decoration: none; }
+
 .site-footer {
   border-top: 1px solid var(--line);
   margin-top: 80px;
