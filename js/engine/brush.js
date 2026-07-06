@@ -1,7 +1,7 @@
 // Sensitizer brush: paints a coverage mask into a 2D canvas.
 // The mask's red channel feeds the shader as coating thickness.
 
-export function createBrush(width, height) {
+export function createBrush(width, height, mode = 'brush') {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -11,6 +11,56 @@ export function createBrush(width, height) {
 
   const radius = Math.max(width, height) * 0.045;
   let last = null;
+
+  // A pressed leaf or fern frond, for photogram work.
+  function lens(cx, cy, len, wid, rot) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(-len, 0);
+    ctx.quadraticCurveTo(0, -wid, len, 0);
+    ctx.quadraticCurveTo(0, wid, -len, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function stampLeaf(x, y) {
+    const angle = Math.random() * Math.PI * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.94)';
+    if (Math.random() < 0.45) {
+      // fern frond: leaflets alternating along a stem
+      const len = radius * (1.6 + Math.random() * 1.0);
+      ctx.lineWidth = radius * 0.06;
+      ctx.beginPath();
+      ctx.moveTo(-len * 0.25, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      const n = 7 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const lx = t * len;
+        const s = (1 - t * 0.75) * radius * 0.5;
+        lens(lx, -s * 0.8, s, s * 0.32, -0.9);
+        lens(lx, s * 0.8, s, s * 0.32, 0.9);
+      }
+    } else {
+      // a single tapered leaf with its stem
+      const len = radius * (0.7 + Math.random() * 0.5);
+      const wid = len * (0.30 + Math.random() * 0.15);
+      ctx.lineWidth = radius * 0.07;
+      ctx.beginPath();
+      ctx.moveTo(-len * 1.6, 0);
+      ctx.lineTo(0, 0);
+      ctx.stroke();
+      lens(len * 0.05, 0, len, wid, (Math.random() - 0.5) * 0.2);
+    }
+    ctx.restore();
+  }
 
   function stamp(x, y, r, alpha) {
     const g = ctx.createRadialGradient(x, y, r * 0.1, x, y, r);
@@ -34,13 +84,20 @@ export function createBrush(width, height) {
 
   function begin(x, y) {
     last = [x, y];
-    dab(x, y, radius);
+    if (mode === 'leaf') stampLeaf(x, y);
+    else dab(x, y, radius);
   }
 
   function moveTo(x, y) {
     if (!last) { begin(x, y); return; }
     const [lx, ly] = last;
     const dist = Math.hypot(x - lx, y - ly);
+    if (mode === 'leaf') {
+      if (dist < radius * 2.4) return; // leaves land spaced apart
+      last = [x, y];
+      stampLeaf(x, y);
+      return;
+    }
     const steps = Math.max(1, Math.floor(dist / (radius * 0.35)));
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
@@ -107,6 +164,19 @@ export function createBrush(width, height) {
     end();
   }
 
+  // A loose handful of botanicals across the paper.
+  function autoScatter(margin) {
+    clear();
+    const inset = margin * 0.6 + 0.06;
+    for (let i = 0; i < 16; i++) {
+      stampLeaf(
+        width * (inset + Math.random() * (1 - 2 * inset)),
+        height * (inset + Math.random() * (1 - 2 * inset)),
+      );
+    }
+    end();
+  }
+
   // Rough coverage estimate, sampled coarsely.
   function coverage() {
     const data = ctx.getImageData(0, 0, width, height).data;
@@ -118,5 +188,5 @@ export function createBrush(width, height) {
     return sum / (n * 255);
   }
 
-  return { canvas, begin, moveTo, end, clear, autoCoat, autoPour, coverage };
+  return { canvas, begin, moveTo, end, clear, autoCoat, autoPour, autoScatter, coverage };
 }

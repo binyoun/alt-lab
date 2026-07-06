@@ -81,7 +81,9 @@ export function startRitual(root, config) {
     config.stages.find((s) => stageType(s) === 'paint') || config.stages[1];
 
   function autoApply(stage) {
-    if ((stage && stage.auto) === 'pour') state.brush.autoPour(config.margin);
+    const auto = stage && stage.auto;
+    if (auto === 'pour') state.brush.autoPour(config.margin);
+    else if (auto === 'scatter') state.brush.autoScatter(config.margin);
     else state.brush.autoCoat(config.margin);
     state.maskDirty = true;
   }
@@ -127,7 +129,7 @@ export function startRitual(root, config) {
 
     if (!state.gl) state.gl = createGL(canvas, config.fragment);
     state.gl.setTexture('u_image', state.image);
-    state.brush = createBrush(w, h);
+    state.brush = createBrush(w, h, config.brushMode);
     state.gl.setTexture('u_mask', state.brush.canvas);
     state.gl.set({
       u_res: [w, h],
@@ -174,7 +176,7 @@ export function startRitual(root, config) {
     } else if (type === 'paint') {
       addButton(stage.autoLabel || 'Coat for me', () => autoApply(stage), 'ghost');
       addButton(stage.next, () => {
-        if (state.brush.coverage() < 0.04) {
+        if (stage.minCoverage !== 0 && state.brush.coverage() < 0.04) {
           captionEl.innerHTML = stage.bareText ||
             'The surface is still bare. Work it with your finger or pointer, or let the studio do it for you.';
           return;
@@ -367,7 +369,7 @@ export function startRitual(root, config) {
     ctx.font = `${Math.round(strip * 0.3)}px Georgia, serif`;
     ctx.textBaseline = 'middle';
     ctx.fillText(
-      `${config.name}, ${config.year} process · simulated in the browser`,
+      `${config.name}, ${config.year} · simulated in the browser`,
       Math.round(strip * 0.4),
       canvas.height + strip / 2,
     );
