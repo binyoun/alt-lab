@@ -127,8 +127,16 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 40px;
+  perspective: 700px;
 }
-.hero-doors .enter { margin-top: 0; }
+.hero-doors .enter {
+  margin-top: 0;
+  transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.3, 1),
+    background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+.hero-doors .enter:first-child { transform: rotateY(14deg); }
+.hero-doors .enter:last-child { transform: rotateY(-14deg); }
+.hero-doors .enter:hover { transform: rotateY(0deg) scale(1.04); }
 .hero .enter.quiet {
   border-color: var(--line);
   color: var(--ink-dim);
@@ -214,25 +222,36 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   color: var(--ink-dim);
   margin-bottom: 18px;
 }
+/* The benches hang in shallow 3D: an arc of framed prints in a dark room.
+   The .card keeps reveal transforms; .card-inner carries the spatial ones. */
+.family { perspective: 1200px; }
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
+  gap: 16px;
+  transform-style: preserve-3d;
 }
 .card {
   display: block;
+  color: var(--ink);
+  transform-style: preserve-3d;
+}
+.card:hover { text-decoration: none; }
+.card-inner {
+  display: block;
+  position: relative;
+  overflow: hidden;
   background: var(--bg-raise);
   border: 1px solid var(--line);
-  color: var(--ink);
-  overflow: hidden;
+  transform: rotateY(var(--ry, 0deg)) rotateZ(var(--rz, 0deg)) translateZ(0);
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.3, 1),
+    border-color 0.25s ease, box-shadow 0.45s ease;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
 }
-.card:hover { border-color: var(--accent); text-decoration: none; }
-html.motion .card.settled {
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-}
-html.motion .card.settled:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+.card:hover .card-inner {
+  transform: rotateY(calc(var(--ry, 0deg) * 0.25)) rotateZ(0deg) translateZ(38px);
+  border-color: var(--accent);
+  box-shadow: 0 30px 64px rgba(0, 0, 0, 0.58);
 }
 .card img {
   width: 100%;

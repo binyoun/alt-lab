@@ -19,21 +19,50 @@ if (heroNote && ledger.get().began) {
 
 const cards = document.querySelectorAll('.cards .card');
 if (cards.length) {
+  hangPrints();
   decorateBenches();
   if (!ledger.onboarded()) welcomeLetter();
+}
+
+// Wrap each card's contents so the spatial transforms never fight the
+// reveal transforms, then angle every print toward the centre of its row.
+function hangPrints() {
+  for (const card of cards) {
+    const inner = document.createElement('span');
+    inner.className = 'card-inner';
+    while (card.firstChild) inner.appendChild(card.firstChild);
+    card.appendChild(inner);
+  }
+  layoutArc();
+  addEventListener('resize', layoutArc);
+}
+
+function layoutArc() {
+  document.querySelectorAll('.cards').forEach((row) => {
+    const r = row.getBoundingClientRect();
+    if (!r.width) return;
+    [...row.querySelectorAll('.card')].forEach((card, i) => {
+      const cr = card.getBoundingClientRect();
+      const nx = ((cr.left + cr.width / 2) - (r.left + r.width / 2)) / (r.width / 2);
+      const inner = card.querySelector('.card-inner');
+      inner.style.setProperty('--ry', (nx * -6).toFixed(2) + 'deg');
+      inner.style.setProperty('--rz', (((i % 3) - 1) * 0.5).toFixed(2) + 'deg');
+    });
+  });
 }
 
 function decorateBenches() {
   for (const card of cards) {
     const id = (card.getAttribute('href') || '').replace(/\//g, '');
     if (!PROCESSES[id]) continue;
+    const inner = card.querySelector('.card-inner') || card;
     if (ledger.hasSeal(id)) {
       const seal = document.createElement('span');
       seal.className = 'seal mini';
       seal.style.setProperty('--seal', PROCESSES[id].seal);
       seal.textContent = PROCESSES[id].name[0];
       seal.title = 'Sealed by the Master';
-      card.appendChild(seal);
+      inner.appendChild(seal);
     }
     const open = commissionsFor(id).filter((c) => !ledger.fulfilled(c.id)).length;
     const status = document.createElement('div');
@@ -41,7 +70,7 @@ function decorateBenches() {
     status.textContent = open
       ? (open === 1 ? 'A letter waits' : `${open} letters wait`)
       : 'All letters answered';
-    card.querySelector('.card-body').appendChild(status);
+    inner.querySelector('.card-body').appendChild(status);
   }
 }
 
