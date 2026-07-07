@@ -12,6 +12,18 @@
   font-style: italic;
   font-display: swap;
 }
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('../fonts/EBGaramond-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('../fonts/EBGaramond-Italic.woff2') format('woff2');
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
   --bg: #101114;
@@ -22,6 +34,7 @@
   --line: #2a2d34;
   --paper: #efe9dc;
   --serif: 'IM Fell English', 'Georgia', 'Times New Roman', serif;
+  --prose: 'EB Garamond', 'Georgia', 'Times New Roman', serif;
   --parchment: #e9e2d0;
   --parchment-ink: #3a3226;
   --sans: -apple-system, 'Helvetica Neue', Arial, sans-serif;
@@ -169,7 +182,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   margin: 18px auto 0;
   max-width: 34em;
   color: var(--ink-dim);
-  font-size: 1.02rem;
+  font-family: var(--prose);
+  font-size: 1.18rem;
 }
 .hero .enter {
   display: inline-block;
@@ -195,7 +209,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   margin-bottom: 6px;
 }
 .family .family-note {
-  font-size: 0.85rem;
+  font-family: var(--prose);
+  font-size: 1rem;
   color: var(--ink-dim);
   margin-bottom: 18px;
 }
@@ -232,7 +247,7 @@ html.motion .card.settled:hover {
 .card .card-body { padding: 14px 18px 18px; }
 .card .year { font-size: 0.75rem; color: var(--ink-dim); letter-spacing: 0.08em; }
 .card h3 { font-family: var(--serif); font-weight: 400; font-size: 1.2rem; margin: 4px 0 6px; }
-.card p { font-size: 0.83rem; color: var(--ink-dim); }
+.card p { font-family: var(--prose); font-size: 0.98rem; color: var(--ink-dim); }
 
 /* Ritual page */
 .ritual {
@@ -283,10 +298,11 @@ canvas.print {
 }
 
 .caption {
-  max-width: 46em;
+  max-width: 44em;
   text-align: center;
   color: var(--ink-dim);
-  font-size: 0.92rem;
+  font-family: var(--prose);
+  font-size: 1.08rem;
   min-height: 3.2em;
   margin: 6px 0 14px;
 }
@@ -368,7 +384,7 @@ canvas.print {
   margin: 20px 0;
 }
 .upload-panel.dragover { border-color: var(--accent); }
-.upload-panel p { color: var(--ink-dim); font-size: 0.9rem; margin-top: 14px; }
+.upload-panel p { color: var(--ink-dim); font-family: var(--prose); font-size: 1.02rem; margin-top: 14px; }
 .upload-panel .privacy { font-size: 0.78rem; margin-top: 22px; }
 .upload-panel .drawer-line { margin-top: 18px; }
 .upload-panel .drawer-line button {
@@ -392,7 +408,7 @@ canvas.print {
 }
 .prose h1 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; margin-bottom: 24px; }
 .prose h2 { font-family: var(--serif); font-weight: 400; font-size: 1.3rem; margin: 40px 0 12px; }
-.prose p { margin-bottom: 16px; color: var(--ink-dim); }
+.prose p { margin-bottom: 16px; color: var(--ink-dim); font-family: var(--prose); font-size: 1.12rem; }
 .prose p strong { color: var(--ink); }
 
 /* History timeline */
@@ -402,7 +418,7 @@ canvas.print {
   padding: 60px 20px;
 }
 .timeline > h1 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; }
-.timeline > .lede { color: var(--ink-dim); margin: 14px 0 40px; }
+.timeline > .lede { color: var(--ink-dim); margin: 14px 0 40px; font-family: var(--prose); font-size: 1.14rem; }
 .chapter {
   border-left: 1px solid var(--line);
   padding: 0 0 44px 28px;
@@ -428,7 +444,7 @@ canvas.print {
   margin: 2px 0 10px;
   color: var(--ink-dim);
 }
-.chapter p { color: var(--ink-dim); margin-bottom: 12px; font-size: 0.95rem; }
+.chapter p { color: var(--ink-dim); margin-bottom: 12px; font-family: var(--prose); font-size: 1.1rem; }
 .chapter figure { margin: 4px 0 16px; }
 .chapter figure .frame {
   overflow: hidden;
@@ -467,6 +483,12 @@ canvas.print {
 }
 .footer-nav a { color: var(--ink-dim); }
 .footer-nav a:hover { color: var(--ink); text-decoration: none; }
+.site-footer .copyright {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #6f6a60;
+}
 
 /* ---- The apprentice layer: master's voice, letters, seals, ledger ---- */
 

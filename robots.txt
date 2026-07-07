@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://binyoun.github.io/alt-lab/sitemap.xml
