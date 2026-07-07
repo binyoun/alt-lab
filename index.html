@@ -19,18 +19,41 @@
   </div>
 </header>
 
-<main class="hero hero-scene" style="background-image: url('img/scene/landing.jpg')">
-  <div class="wrap">
-    <h1>Photography began as chemistry.</h1>
-    <p>Iron salts, silver, egg white, plant juice, and sunlight. Bring a photograph
-    from your phone and walk it through a darkroom from another century. The print
-    develops in front of you, and the picture never leaves your device.</p>
-    <a class="enter" href="lab/">Enter the lab</a>
-  </div>
+<main>
+  <section class="hero hero-scene">
+    <canvas class="hero-canvas" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <h1>Photography began as chemistry.</h1>
+      <p>Iron salts, silver, egg white, plant juice, and sunlight. Bring a photograph
+      from your phone and walk it through a darkroom from another century. The print
+      develops in front of you, and the picture never leaves your device.</p>
+      <a class="enter" href="lab/">Enter the lab</a>
+      <p class="hero-note">Behind this text: a cyanotype developing live, printed by
+      the same engine you are about to use.</p>
+    </div>
+  </section>
+
+  <section class="teaser">
+    <a href="history/">
+      <img src="img/scene/landing.jpg" alt="An imagined nineteenth century printing workshop, AI-generated illustration">
+      <span class="ai-note">AI-generated illustration</span>
+      <div class="teaser-text">
+        <h2>A short history of light</h2>
+        <p>From the first fixed image in 1826 to the sensor in your pocket. The story
+        behind every process in the lab.</p>
+      </div>
+    </a>
+  </section>
 </main>
 
 <footer class="site-footer">
   <div class="wrap">Every process runs in your browser. No photograph is uploaded.</div>
 </footer>
+
+<script type="module">
+  import { startHero } from './js/landing-hero.js';
+  try { startHero(document.querySelector('.hero-canvas')); } catch (e) { /* no WebGL2: quiet dark hero */ }
+</script>
+<script src="js/motion.js" defer></script>
 </body>
 </html>

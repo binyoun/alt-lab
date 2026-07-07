@@ -155,7 +155,23 @@ export function startRitual(root, config) {
   }
 
   // ---- stage machine -------------------------------------------------
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let stageToken = 0;
+
   function setStage(id) {
+    if (REDUCED) { applyStage(id); return; }
+    const token = ++stageToken;
+    captionEl.classList.add('stage-fade');
+    controlsEl.classList.add('stage-fade');
+    setTimeout(() => {
+      if (token !== stageToken) return;
+      applyStage(id);
+      captionEl.classList.remove('stage-fade');
+      controlsEl.classList.remove('stage-fade');
+    }, 180);
+  }
+
+  function applyStage(id) {
     state.stage = id;
     const idx = stageIndex(id);
     stepsEl.querySelectorAll('span').forEach((span, i) => {
@@ -199,8 +215,12 @@ export function startRitual(root, config) {
         e.preventDefault();
         hold.setPointerCapture(e.pointerId);
         state.exposing = true;
+        hold.classList.add('exposing');
       });
-      const stop = () => { state.exposing = false; };
+      const stop = () => {
+        state.exposing = false;
+        hold.classList.remove('exposing');
+      };
       hold.addEventListener('pointerup', stop);
       hold.addEventListener('pointercancel', stop);
       hold.addEventListener('contextmenu', (e) => e.preventDefault());

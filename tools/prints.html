@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample print generator (internal tool)</title>
+<style>
+  body { background: #16171b; color: #ddd; font-family: sans-serif; padding: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  figure { margin: 0; }
+  canvas { width: 100%; display: block; }
+  figcaption { font-size: 12px; padding: 4px 0; }
+</style>
+</head>
+<body>
+<h1>Engine-rendered sample prints</h1>
+<p>Internal tool. Renders one finished botanical print per process; a script
+reads <code>window.__prints</code> to save them as the lab card images.</p>
+<div class="grid" id="grid"></div>
+
+<script type="module">
+  import { renderStill } from '../js/engine/sample.js';
+  import cyanotype from '../js/processes/cyanotype.js';
+  import vandyke from '../js/processes/vandyke.js';
+  import platinum from '../js/processes/platinum.js';
+  import saltprint from '../js/processes/saltprint.js';
+  import albumen from '../js/processes/albumen.js';
+  import daguerreotype from '../js/processes/daguerreotype.js';
+  import tintype from '../js/processes/tintype.js';
+  import anthotype from '../js/processes/anthotype.js';
+  import lumen from '../js/processes/lumen.js';
+
+  const opts = {
+    daguerreotype: { tilt: -0.45 },
+    tintype: { tilt: -0.15 },
+    lumen: { exposure: 1.1 },
+  };
+
+  const prints = {};
+  for (const config of [cyanotype, vandyke, platinum, saltprint, albumen,
+      daguerreotype, tintype, anthotype, lumen]) {
+    const fig = document.createElement('figure');
+    const canvas = document.createElement('canvas');
+    canvas.width = 700;
+    canvas.height = 560;
+    const cap = document.createElement('figcaption');
+    cap.textContent = config.id;
+    fig.append(canvas, cap);
+    document.getElementById('grid').appendChild(fig);
+    renderStill(config, canvas, opts[config.id] || {});
+    prints[config.id] = canvas.toDataURL('image/jpeg', 0.85);
+  }
+  window.__prints = prints;
+</script>
+</body>
+</html>
