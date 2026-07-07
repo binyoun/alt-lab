@@ -11,6 +11,7 @@ export function createBrush(width, height, mode = 'brush') {
 
   const radius = Math.max(width, height) * 0.045;
   let last = null;
+  let marks = 0; // manual gestures only; autoCoat/autoPour/autoScatter reset it
 
   // A pressed leaf or fern frond, for photogram work.
   function lens(cx, cy, len, wid, rot) {
@@ -84,6 +85,7 @@ export function createBrush(width, height, mode = 'brush') {
 
   function begin(x, y) {
     last = [x, y];
+    marks++;
     if (mode === 'leaf') stampLeaf(x, y);
     else dab(x, y, radius);
   }
@@ -95,6 +97,7 @@ export function createBrush(width, height, mode = 'brush') {
     if (mode === 'leaf') {
       if (dist < radius * 2.4) return; // leaves land spaced apart
       last = [x, y];
+      marks++;
       stampLeaf(x, y);
       return;
     }
@@ -112,6 +115,7 @@ export function createBrush(width, height, mode = 'brush') {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
     last = null;
+    marks = 0;
   }
 
   // Even horizontal strokes with ragged ends, like a coating rod pass.
@@ -188,5 +192,9 @@ export function createBrush(width, height, mode = 'brush') {
     return sum / (n * 255);
   }
 
-  return { canvas, begin, moveTo, end, clear, autoCoat, autoPour, autoScatter, coverage };
+  return {
+    canvas, begin, moveTo, end, clear,
+    autoCoat, autoPour, autoScatter, coverage,
+    marks: () => marks,
+  };
 }

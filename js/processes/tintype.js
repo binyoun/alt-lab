@@ -15,6 +15,11 @@ export default buildPlate({
       'plate. Cheap, tough, and fast: the portrait you could carry home from the ' +
       'fair in your pocket.',
     exposureSeconds: 8,
+    remarks: {
+      fine: 'Ready while the sitter is still smiling. That is the whole trade.',
+      over: 'Flat as spilled cream. The fair forgives; I do not.',
+      pale: 'Murk. Another few seconds of lens was all it wanted.',
+    },
   },
 
   look: {

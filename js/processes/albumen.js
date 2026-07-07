@@ -14,6 +14,11 @@ export default buildSiderotype({
       'on the surface instead of in the fibre. The result is glossy, sharp, and was ' +
       'the look of nearly every photograph for half a century.',
     exposureMinutes: 10,
+    remarks: {
+      fine: 'Crisp on the albumen, clean at the whites. The album page accepts.',
+      over: 'The gloss cannot save a burnt image.',
+      pale: 'Underdone. The trade would send it back with a note.',
+    },
   },
 
   look: {

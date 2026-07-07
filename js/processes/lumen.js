@@ -103,6 +103,12 @@ export default {
   brushMode: 'leaf',
   fragment: FRAG,
 
+  remarks: {
+    fine: 'The paper remembered more than it was told. Fix it quickly or love it briefly.',
+    over: 'Cooked to plum jam. Even expired silver deserves better.',
+    pale: 'Hardly an afternoon of sun. Leave it out; the paper has nowhere to be.',
+  },
+
   stages: [
     {
       id: 'upload',

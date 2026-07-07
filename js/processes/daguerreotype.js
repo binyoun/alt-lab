@@ -15,6 +15,12 @@ export default buildPlate({
       'process the public ever saw, and still the strangest: the image floats on ' +
       'a mirror and flips from positive to negative as the plate turns.',
     exposureSeconds: 25,
+    remarks: {
+      fine: 'A true mirror with a memory. Tilt it and watch it breathe.',
+      over: 'Milk. The astronomers do this on purpose; you did not.',
+      pale: 'The mercury found almost nothing to hold. Longer under the lens.',
+      thin: 'The polish is lazy, and the plate shows every stroke you did not make.',
+    },
   },
 
   look: {

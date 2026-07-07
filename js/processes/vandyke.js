@@ -14,6 +14,11 @@ export default buildSiderotype({
       'reduces silver nitrate to a deep brown the colour of the old Flemish pigment ' +
       'the process is named after.',
     exposureMinutes: 8,
+    remarks: {
+      fine: 'The colour of old varnish, exactly. Keep it from the light and it will outlive us.',
+      over: 'Past brown into grief. Less sun, apprentice.',
+      pale: 'Weak tea. The silver never woke.',
+    },
   },
 
   look: {

@@ -14,6 +14,11 @@ export default buildSiderotype({
       'reaches them. Herschel devised the chemistry in 1842; Anna Atkins used it a year ' +
       'later to print the first book illustrated by photography.',
     exposureMinutes: 12,
+    remarks: {
+      fine: 'A fine blue. Herschel would nod; Miss Atkins might even keep it.',
+      over: 'Bronzed. The sun ate your shadows while you admired them.',
+      pale: 'Washed away to a whisper. The sun owes you nothing; you must take from it.',
+    },
   },
 
   look: {

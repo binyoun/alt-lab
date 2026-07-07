@@ -106,6 +106,7 @@ void main() {
     exposureScale: opts.meta.exposureSeconds,
     exposureUnit: 'sec in the camera',
     downloadLabel: 'Download the plate',
+    tiltResult: true,
     ...opts.meta,
     fragment,
     stages: opts.stages,

@@ -106,6 +106,12 @@ export default {
   exposureUnit: 'days of sun',
   fragment: FRAG,
 
+  remarks: {
+    fine: 'Weeks of sun, and the flower gave up its colour exactly where you asked.',
+    over: 'Bleached past the picture. The garden worked for nothing.',
+    pale: 'The juice barely noticed the sun. Patience is the whole recipe here.',
+  },
+
   stages: [
     {
       id: 'upload',

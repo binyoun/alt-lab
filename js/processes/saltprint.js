@@ -14,6 +14,11 @@ export default buildSiderotype({
       'in sunlight under a paper negative. Talbot built the whole idea of the ' +
       'photographic print, one copy after another, on this chemistry.',
     exposureMinutes: 15,
+    remarks: {
+      fine: 'Held in the very fibre, as Talbot meant it. Good.',
+      over: 'You printed nearly through to the other side of the paper.',
+      pale: 'It has only begun to arrive. Sometimes that is the picture; today it is not.',
+    },
   },
 
   look: {

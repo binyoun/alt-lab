@@ -7,6 +7,13 @@
 
 import { createGL } from './gl.js';
 import { createBrush } from './brush.js';
+import { judge } from './judge.js';
+import { ledger } from './ledger.js';
+import { sound, mountSoundToggle } from './sound.js';
+import { commissionsFor } from '../content/commissions.js';
+
+const BRUSH_CURSOR =
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M4 24c2-1 3-1 4-3l9-13 3 2-9 13c-1 2-1 3-1 4-2 0-4-1-6-3z' fill='%23c8c2b4'/%3E%3Cpath d='M18 7l3-4 4 3-4 3z' fill='%237fa3c8'/%3E%3C/svg%3E") 4 24, crosshair`;
 
 const MAX_CANVAS = 1600;
 
@@ -26,6 +33,7 @@ export function startRitual(root, config) {
       <div class="ritual-head">
         <h1>${config.name}</h1>
         <div class="meta">${config.year} · ${config.inventor}</div>
+        <button class="letters-btn" data-letters hidden></button>
       </div>
       <div class="steps"></div>
       <div class="stage-canvas-holder">
@@ -40,8 +48,17 @@ export function startRitual(root, config) {
         <canvas class="print" hidden></canvas>
       </div>
       <div class="caption"></div>
+      <div class="master-note" hidden></div>
+      <div class="fulfilled-note" hidden></div>
       <div class="controls"></div>
       <div class="skip" hidden><button data-skip>Skip ahead to the finished print</button></div>
+      <div class="letters-overlay" hidden>
+        <div class="letters-sheaf">
+          <h2>Letters for the ${config.name.toLowerCase()} bench</h2>
+          <div class="letters-list"></div>
+          <button class="btn ghost" data-letters-close>Back to the bench</button>
+        </div>
+      </div>
     </div>`;
 
   const el = (sel) => root.querySelector(sel);
@@ -51,6 +68,11 @@ export function startRitual(root, config) {
   const controlsEl = el('.controls');
   const uploadPanel = el('.upload-panel');
   const skipEl = el('.skip');
+  const noteEl = el('.master-note');
+  const fulfilledEl = el('.fulfilled-note');
+
+  mountSoundToggle();
+  buildLetters();
 
   for (const s of config.stages) {
     const span = document.createElement('span');
@@ -72,8 +94,115 @@ export function startRitual(root, config) {
     adj: 1,
     contrast: 1,
     tone: 0,
+    handCoated: false, // any manual work on the surface, not undone by auto
+    pressed: false,    // this print already sits in the ledger
+    skipped: false,    // the studio made this one; the Master seals no shortcuts
     image: null, // offscreen canvas with the photo
   };
+
+  // ---- the Master's judgment and the ledger -----------------------------
+  function judgement() {
+    return judge(config, resultPayload());
+  }
+
+  function resultPayload() {
+    const v = {
+      exposure: state.exposure,
+      adj: state.adj,
+      tone: state.tone,
+      contrast: state.contrast,
+      coverage: state.brush ? state.brush.coverage() : 0,
+      handCoated: state.handCoated,
+      handMarks: state.brush ? state.brush.marks() : 0,
+    };
+    return v;
+  }
+
+  function showVerdict() {
+    const v = judgement();
+    noteEl.innerHTML = `<span class="master-says">The Master looks it over.</span> ${v.remark}`;
+    noteEl.hidden = false;
+    return v;
+  }
+
+  function pressIntoLedger(button) {
+    if (state.pressed) return;
+    state.pressed = true;
+    const v = judgement();
+    const payload = { ...resultPayload(), tier: v.tier, eff: v.eff };
+
+    const thumb = document.createElement('canvas');
+    thumb.width = 168;
+    thumb.height = Math.round(168 * canvas.height / canvas.width);
+    thumb.getContext('2d').drawImage(canvas, 0, 0, thumb.width, thumb.height);
+    ledger.savePrint({
+      process: config.id,
+      verdict: v.tier,
+      params: { eff: +v.eff.toFixed(2), tone: +state.tone.toFixed(2) },
+      thumb: thumb.toDataURL('image/jpeg', 0.7),
+    });
+
+    const lines = [];
+    if (state.skipped) {
+      lines.push('The Master glances up. A print the studio made by itself earns no seal; walk the stages yourself next time.');
+    }
+    if (v.seal && !state.skipped && ledger.grantSeal(config.id)) {
+      lines.push(`The Master presses the studio's <strong>${config.name.toLowerCase()} seal</strong> beside it. Yours now.`);
+    }
+    for (const c of commissionsFor(config.id)) {
+      if (!state.skipped && !ledger.fulfilled(c.id) && c.check(payload)) {
+        ledger.fulfil(c.id);
+        lines.push(`Commission fulfilled: <strong>${c.from}</strong> will have their print.`);
+      }
+    }
+    sound.thump();
+    button.textContent = 'Pressed into the ledger';
+    button.disabled = true;
+    if (lines.length) {
+      fulfilledEl.innerHTML = lines.join('<br>');
+      fulfilledEl.hidden = false;
+    }
+    updateLettersBtn();
+  }
+
+  // ---- the letters ------------------------------------------------------
+  function buildLetters() {
+    const list = el('.letters-list');
+    list.innerHTML = '';
+    for (const c of commissionsFor(config.id)) {
+      const done = ledger.fulfilled(c.id);
+      const div = document.createElement('article');
+      div.className = 'letter' + (done ? ' done' : '');
+      div.innerHTML = `
+        <div class="letter-from">${c.from}, ${c.year}</div>
+        <p>${c.letter}</p>
+        <div class="letter-goal">${c.goal}</div>
+        ${done ? '<div class="letter-stamp">Fulfilled</div>' : ''}`;
+      list.appendChild(div);
+    }
+    updateLettersBtn();
+  }
+
+  function updateLettersBtn() {
+    const btn = el('[data-letters]');
+    const all = commissionsFor(config.id);
+    if (!all.length) return;
+    const open = all.filter((c) => !ledger.fulfilled(c.id)).length;
+    btn.hidden = false;
+    btn.textContent = open
+      ? (open === 1 ? 'A letter waits for you' : `${open} letters wait for you`)
+      : 'Letters, both answered';
+    btn.classList.toggle('all-done', open === 0);
+  }
+
+  el('[data-letters]').addEventListener('click', () => {
+    buildLetters();
+    el('.letters-overlay').hidden = false;
+    sound.flip();
+  });
+  el('[data-letters-close]').addEventListener('click', () => {
+    el('.letters-overlay').hidden = true;
+  });
 
   const stageIndex = (id) => config.stages.findIndex((s) => s.id === id);
   const stageType = (s) => s.type || DEFAULT_TYPE[s.id] || 'info';
@@ -85,6 +214,7 @@ export function startRitual(root, config) {
     if (auto === 'pour') state.brush.autoPour(config.margin);
     else if (auto === 'scatter') state.brush.autoScatter(config.margin);
     else state.brush.autoCoat(config.margin);
+    state.handCoated = false; // the studio did this one
     state.maskDirty = true;
   }
 
@@ -148,6 +278,9 @@ export function startRitual(root, config) {
     state.adj = 1;
     state.contrast = 1;
     state.tone = 0;
+    state.handCoated = false;
+    state.pressed = false;
+    state.skipped = false;
 
     uploadPanel.hidden = true;
     canvas.hidden = false;
@@ -182,6 +315,14 @@ export function startRitual(root, config) {
     const type = stageType(stage);
     captionEl.innerHTML = stage.caption;
     skipEl.hidden = type === 'upload' || type === 'result';
+    noteEl.hidden = type !== 'result';
+    if (type !== 'result') fulfilledEl.hidden = true;
+    canvas.style.cursor =
+      type === 'paint' ? BRUSH_CURSOR
+      : type === 'result' && config.tiltResult ? 'ew-resize'
+      : 'default';
+    sound.setScene({ paint: 'coat', hold: 'expose', reveal: 'wash' }[type] || 'room');
+    sound.flip();
     buildControls(type, stage);
   }
 
@@ -241,35 +382,53 @@ export function startRitual(root, config) {
         state.washing = true;
       });
     } else if (type === 'result') {
+      showVerdict();
+      const refreshVerdict = () => { if (!state.pressed) showVerdict(); };
       const sliders = document.createElement('div');
       sliders.className = 'sliders';
       addSlider(sliders, 'Exposure', 0.5, 1.6, state.adj, (v) => {
         state.adj = v;
         state.gl.set({ u_adj: v });
+        refreshVerdict();
       });
       addSlider(sliders, 'Contrast', 0.6, 1.6, state.contrast, (v) => {
         state.contrast = v;
         state.gl.set({ u_contrast: v });
+        refreshVerdict();
       });
       addSlider(sliders, 'Toning', -1, 1, state.tone, (v) => {
         state.tone = v;
         state.gl.set({ u_tone: v });
+        refreshVerdict();
       });
       controlsEl.appendChild(sliders);
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;justify-content:center;';
       controlsEl.appendChild(row);
-      addButton(config.downloadLabel || 'Download the print', downloadPrint, '', row);
+      const press = addButton('Press it into the ledger', function () {
+        pressIntoLedger(this);
+      }, '', row);
+      if (state.pressed) {
+        press.textContent = 'Pressed into the ledger';
+        press.disabled = true;
+      }
+      addButton(config.downloadLabel || 'Download the print', downloadPrint, 'ghost', row);
       addButton('Make another', () => {
         state.brush.clear();
         state.maskDirty = true;
         state.exposure = 0;
         state.wash = 0;
+        state.pressed = false;
+        state.handCoated = false;
+        state.skipped = false;
         setStage(firstPaint().id);
       }, 'ghost', row);
       addButton('New photograph', () => {
         canvas.hidden = true;
         uploadPanel.hidden = false;
+        state.pressed = false;
+        state.handCoated = false;
+        state.skipped = false;
         setStage(config.stages[0].id);
       }, 'ghost', row);
     }
@@ -306,6 +465,7 @@ export function startRitual(root, config) {
     if (state.brush.coverage() < 0.04) autoApply(firstPaint());
     if (state.exposure < 0.2) state.exposure = config.idealExposure;
     state.wash = 1;
+    state.skipped = true;
     setStage(config.stages[config.stages.length - 1].id);
   });
 
@@ -317,18 +477,27 @@ export function startRitual(root, config) {
       ((e.clientY - r.top) / r.height) * canvas.height,
     ];
   }
+  let lastBrushSound = 0;
   canvas.addEventListener('pointerdown', (e) => {
     if (stageType(config.stages[stageIndex(state.stage)]) !== 'paint') return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     state.brush.begin(...maskPoint(e));
+    state.handCoated = true;
     state.maskDirty = true;
+    sound.brush(0.6);
   });
   canvas.addEventListener('pointermove', (e) => {
     const type = stageType(config.stages[stageIndex(state.stage)]);
     if (type === 'paint' && e.buttons !== 0) {
       state.brush.moveTo(...maskPoint(e));
+      state.handCoated = true;
       state.maskDirty = true;
+      const now = performance.now();
+      if (now - lastBrushSound > 90) {
+        lastBrushSound = now;
+        sound.brush(Math.min(1, (Math.abs(e.movementX) + Math.abs(e.movementY)) / 30));
+      }
     } else if (type === 'result') {
       const r = canvas.getBoundingClientRect();
       state.tilt = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
@@ -349,6 +518,8 @@ export function startRitual(root, config) {
         state.meterFill.style.width = (state.exposure / config.maxExposure) * 100 + '%';
         const n = Math.round(state.exposure * config.exposureScale);
         state.meterLabel.textContent = `about ${n} ${config.exposureUnit}`;
+        state.tickTimer = (state.tickTimer || 0) + dt;
+        if (state.tickTimer >= 1) { state.tickTimer = 0; sound.tick(); }
       }
       if (state.washing) {
         state.wash = Math.min(1, state.wash + dt / 2.6);

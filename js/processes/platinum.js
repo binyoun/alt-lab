@@ -15,6 +15,11 @@ export default buildSiderotype({
       'longest tonal scale in photography. A platinum print outlives the paper it ' +
       'sits on.',
     exposureMinutes: 20,
+    remarks: {
+      fine: 'Look at the middle greys. That is why they pay for platinum.',
+      over: 'Even the noble metals can be bullied. This one was.',
+      pale: 'A ghost in the oxalate. It wanted twice the light.',
+    },
   },
 
   look: {
