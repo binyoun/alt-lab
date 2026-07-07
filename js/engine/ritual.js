@@ -11,6 +11,7 @@ import { judge } from './judge.js';
 import { ledger } from './ledger.js';
 import { sound, mountSoundToggle } from './sound.js';
 import { commissionsFor } from '../content/commissions.js';
+import { botanicalPlate } from './sample.js';
 
 const BRUSH_CURSOR =
   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M4 24c2-1 3-1 4-3l9-13 3 2-9 13c-1 2-1 3-1 4-2 0-4-1-6-3z' fill='%23c8c2b4'/%3E%3Cpath d='M18 7l3-4 4 3-4 3z' fill='%237fa3c8'/%3E%3C/svg%3E") 4 24, crosshair`;
@@ -41,6 +42,8 @@ export function startRitual(root, config) {
           <button class="btn" data-pick>Choose a photograph</button>
           <button class="btn ghost" data-camera>Use the camera</button>
           <p>Or drop an image here.</p>
+          <p class="drawer-line">No photograph at hand?
+            <button data-specimen>Borrow a specimen from the drawer</button></p>
           <p class="privacy">The photograph stays on this device. Nothing is uploaded.</p>
           <input type="file" accept="image/*" hidden data-file>
           <input type="file" accept="image/*" capture="environment" hidden data-capture>
@@ -239,6 +242,10 @@ export function startRitual(root, config) {
 
   el('[data-pick]').addEventListener('click', () => el('[data-file]').click());
   el('[data-camera]').addEventListener('click', () => el('[data-capture]').click());
+  el('[data-specimen]').addEventListener('click', () => {
+    state.image = botanicalPlate(1600, 1200);
+    beginRitual();
+  });
   el('[data-file]').addEventListener('change', (e) => loadFile(e.target.files[0]));
   el('[data-capture]').addEventListener('change', (e) => loadFile(e.target.files[0]));
   uploadPanel.addEventListener('dragover', (e) => { e.preventDefault(); uploadPanel.classList.add('dragover'); });

@@ -7,6 +7,16 @@ import { PROCESSES, commissionsFor } from './content/commissions.js';
 
 mountSoundToggle();
 
+// On the landing page, a returning apprentice sees their standing.
+const heroNote = document.querySelector('.hero-note');
+if (heroNote && ledger.get().began) {
+  const seals = ledger.sealCount();
+  const line = document.createElement('p');
+  line.className = 'hero-standing';
+  line.innerHTML = `Apprenticed to this studio. <a href="ledger/">${seals} of 9 seals earned; the ledger is kept here.</a>`;
+  heroNote.after(line);
+}
+
 const cards = document.querySelectorAll('.cards .card');
 if (cards.length) {
   decorateBenches();

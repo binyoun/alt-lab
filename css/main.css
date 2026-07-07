@@ -48,8 +48,19 @@ a:hover { text-decoration: underline; }
 
 /* Site header */
 .site-header {
-  padding: 18px 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 16px 0;
   border-bottom: 1px solid var(--line);
+  background: rgba(16, 17, 20, 0.82);
+  -webkit-backdrop-filter: blur(9px);
+  backdrop-filter: blur(9px);
+}
+
+a:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .site-header .wrap {
   display: flex;
@@ -74,7 +85,7 @@ a:hover { text-decoration: underline; }
 }
 .hero.hero-scene {
   position: relative;
-  min-height: 78vh;
+  min-height: 84vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -97,6 +108,31 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
   color: var(--ink-dim);
 }
+.hero-doors {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 40px;
+}
+.hero-doors .enter { margin-top: 0; }
+.hero .enter.quiet {
+  border-color: var(--line);
+  color: var(--ink-dim);
+}
+.hero .enter.quiet:hover {
+  background: none;
+  color: var(--ink);
+  border-color: var(--ink-dim);
+}
+.hero-standing {
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  color: #beb7a6;
+}
+.hero-standing a { color: var(--accent); }
 .hero-scene::after {
   content: '';
   position: absolute;
@@ -113,39 +149,6 @@ a:hover { text-decoration: underline; }
   backdrop-filter: blur(3px);
 }
 
-/* History teaser band on the landing page */
-.teaser {
-  max-width: 860px;
-  margin: 44px auto 0;
-  padding: 0 20px;
-}
-.teaser a {
-  display: block;
-  position: relative;
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.teaser a:hover { border-color: var(--accent); text-decoration: none; }
-.teaser img {
-  width: 100%;
-  aspect-ratio: 21 / 9;
-  object-fit: cover;
-  object-position: center 30%;
-  display: block;
-  filter: saturate(0.8);
-  opacity: 0.85;
-  transition: opacity 0.3s ease;
-}
-.teaser a:hover img { opacity: 1; }
-.teaser .teaser-text {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 48px 24px 20px;
-  background: linear-gradient(transparent, rgba(16, 17, 20, 0.92));
-}
-.teaser h2 { font-family: var(--serif); font-weight: 400; font-size: 1.4rem; color: var(--ink); }
-.teaser p { color: var(--ink-dim); font-size: 0.88rem; margin-top: 4px; }
-
 /* Label worn by every AI-generated illustration */
 .ai-note {
   display: inline-block;
@@ -155,11 +158,6 @@ a:hover { text-decoration: underline; }
   color: var(--ink-dim);
   border: 1px solid var(--line);
   padding: 3px 8px;
-}
-.teaser .ai-note {
-  position: absolute;
-  top: 12px; right: 12px;
-  background: rgba(16, 17, 20, 0.65);
 }
 .hero h1 {
   font-family: var(--serif);
@@ -372,6 +370,19 @@ canvas.print {
 .upload-panel.dragover { border-color: var(--accent); }
 .upload-panel p { color: var(--ink-dim); font-size: 0.9rem; margin-top: 14px; }
 .upload-panel .privacy { font-size: 0.78rem; margin-top: 22px; }
+.upload-panel .drawer-line { margin-top: 18px; }
+.upload-panel .drawer-line button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.upload-panel .drawer-line button:hover { color: var(--ink); }
 
 /* Prose pages (history, about) */
 .prose {
@@ -448,6 +459,14 @@ canvas.print {
   color: var(--ink-dim);
   text-align: center;
 }
+.footer-nav {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.footer-nav a { color: var(--ink-dim); }
+.footer-nav a:hover { color: var(--ink); text-decoration: none; }
 
 /* ---- The apprentice layer: master's voice, letters, seals, ledger ---- */
 

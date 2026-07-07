@@ -49,9 +49,11 @@ function loopNoise(brown, filterType, freq, q, gainValue) {
 }
 
 function buildLayers() {
-  layers.room = loopNoise(true, 'lowpass', 240, 0.7, 0.028);
-  layers.wind = loopNoise(false, 'bandpass', 420, 0.6, 0.02);
-  layers.water = loopNoise(false, 'bandpass', 950, 0.9, 0.05);
+  // laptop speakers reproduce little below ~300Hz, so the room tone must
+  // live higher than a real darkroom hum would
+  layers.room = loopNoise(true, 'lowpass', 480, 0.7, 0.11);
+  layers.wind = loopNoise(false, 'bandpass', 480, 0.6, 0.09);
+  layers.water = loopNoise(false, 'bandpass', 950, 0.9, 0.17);
   // slow wander in the wind and water so the loops never read as loops
   const lfo = ctx.createOscillator();
   lfo.frequency.value = 0.11;
@@ -115,13 +117,13 @@ function burst(filterFreq, peak, decay, filterType = 'highpass') {
 
 function drip() {
   if (scene !== 'room' && scene !== 'wash') return;
-  blip(720 + Math.random() * 500, 240, 0.035, 0.004, 0.16);
+  blip(720 + Math.random() * 500, 240, 0.10, 0.004, 0.18);
 }
 
 function bird() {
   const base = 2400 + Math.random() * 1400;
-  blip(base, base * 1.5, 0.022, 0.02, 0.09);
-  setTimeout(() => blip(base * 1.2, base * 0.8, 0.018, 0.02, 0.08), 130 + Math.random() * 120);
+  blip(base, base * 1.5, 0.05, 0.02, 0.09);
+  setTimeout(() => blip(base * 1.2, base * 0.8, 0.04, 0.02, 0.08), 130 + Math.random() * 120);
 }
 
 function applyScene() {
@@ -144,13 +146,18 @@ export const sound = {
 
   enable(on) {
     ledger.setSound(on);
-    if (on) {
-      ensureCtx();
-      if (ctx.state === 'suspended') ctx.resume();
-      master.gain.setTargetAtTime(0.9, ctx.currentTime, 0.3);
-    } else if (ctx) {
-      master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
-    }
+    try {
+      if (on) {
+        ensureCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+        master.gain.setTargetAtTime(0.9, ctx.currentTime, 0.3);
+        // let them hear that the room is now listening
+        setTimeout(() => { blip(660, 220, 0.12, 0.005, 0.22); }, 120);
+        setTimeout(() => { blip(880, 300, 0.08, 0.005, 0.20); }, 460);
+      } else if (ctx) {
+        master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+      }
+    } catch (e) { /* no WebAudio: stay quiet */ }
   },
 
   setScene(name) {
@@ -160,20 +167,20 @@ export const sound = {
 
   brush(strength) {
     if (!ctx || !ledger.soundOn()) return;
-    burst(1400 + Math.random() * 600, Math.min(0.05, 0.015 + strength * 0.03), 0.07);
+    burst(1400 + Math.random() * 600, Math.min(0.12, 0.04 + strength * 0.07), 0.07);
   },
   tick() {
     if (!ctx || !ledger.soundOn()) return;
-    blip(1500, 1500, 0.012, 0.003, 0.03, 'square');
+    blip(1500, 1500, 0.03, 0.003, 0.03, 'square');
   },
   flip() {
     if (!ctx || !ledger.soundOn()) return;
-    burst(2600, 0.03, 0.11, 'bandpass');
+    burst(2600, 0.06, 0.11, 'bandpass');
   },
   thump() {
     if (!ctx || !ledger.soundOn()) return;
-    blip(110, 55, 0.20, 0.008, 0.22);
-    burst(3000, 0.03, 0.05);
+    blip(140, 60, 0.30, 0.008, 0.24);
+    burst(3000, 0.05, 0.05);
   },
 };
 
