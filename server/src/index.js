@@ -11,6 +11,7 @@ const ORIGINS = [
   'https://binyoun.github.io',
   'http://localhost:8123',
   'http://127.0.0.1:8123',
+  'http://localhost:8124', // the Photo 101 hub, served locally
 ];
 const PROCESSES = ['cyanotype', 'vandyke', 'platinum', 'saltprint', 'albumen', 'daguerreotype', 'tintype', 'anthotype', 'lumen'];
 const TIERS = ['thin', 'pale', 'fine', 'over', 'fair'];
@@ -138,7 +139,7 @@ export class Atelier {
       a.x = num(m.x, -24, 24);
       a.z = num(m.z, -9, 9);
       a.r = num(m.r, -100, 100);
-      a.a = PROCESSES.includes(m.a) ? m.a : '';
+      a.a = typeof m.a === 'string' && /^[a-z0-9-]{0,24}$/.test(m.a) ? m.a : ''; // what they are at: a bench, a room
       ws.serializeAttachment(a);
       this.broadcast({ t: 'pos', id: a.id, x: a.x, z: a.z, r: a.r, a: a.a }, ws);
     } else if (m.t === 'chat') {
