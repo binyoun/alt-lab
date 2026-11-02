@@ -11,7 +11,7 @@ import { judge } from './judge.js';
 import { ledger } from './ledger.js';
 import { sound, mountSoundToggle } from './sound.js';
 import { commissionsFor } from '../content/commissions.js';
-import { botanicalPlate } from './sample.js';
+import { botanicalPlate, withSeed } from './sample.js';
 
 const BRUSH_CURSOR =
   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M4 24c2-1 3-1 4-3l9-13 3 2-9 13c-1 2-1 3-1 4-2 0-4-1-6-3z' fill='%23c8c2b4'/%3E%3Cpath d='M18 7l3-4 4 3-4 3z' fill='%237fa3c8'/%3E%3C/svg%3E") 4 24, crosshair`;
@@ -102,6 +102,7 @@ export function startRitual(root, config, hooks = {}) {
     skipped: false,    // the studio made this one; the Master seals no shortcuts
     image: null, // offscreen canvas with the photo
     specimen: false, // the drawer's botanical plate, not the visitor's photo
+    seed: 0,         // how the drawer's plate was laid out, for recipes
   };
 
   // ---- the Master's judgment and the ledger -----------------------------
@@ -151,6 +152,14 @@ export function startRitual(root, config, hooks = {}) {
         tier: v.tier,
         skipped: state.skipped,
         specimen: state.specimen,
+        // enough to redraw a specimen print elsewhere without sending it
+        recipe: state.specimen ? {
+          seed: state.seed,
+          exposure: +state.exposure.toFixed(4),
+          adj: +state.adj.toFixed(3),
+          contrast: +state.contrast.toFixed(3),
+          tone: +state.tone.toFixed(3),
+        } : null,
         thumb,
         print: canvas,
       });
@@ -255,7 +264,8 @@ export function startRitual(root, config, hooks = {}) {
   el('[data-pick]').addEventListener('click', () => el('[data-file]').click());
   el('[data-camera]').addEventListener('click', () => el('[data-capture]').click());
   el('[data-specimen]').addEventListener('click', () => {
-    state.image = botanicalPlate(1600, 1200);
+    state.seed = Math.floor(Math.random() * 2147483646);
+    state.image = withSeed(state.seed, () => botanicalPlate(1600, 1200));
     state.specimen = true;
     beginRitual();
   });

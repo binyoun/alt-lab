@@ -8,6 +8,7 @@ import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
 import { startRitual } from '../engine/ritual.js';
 import { ledger } from '../engine/ledger.js';
+import { renderRecipe } from '../engine/sample.js';
 import { sound, mountSoundToggle } from '../engine/sound.js';
 import { PROCESSES, COMMISSIONS } from '../content/commissions.js';
 
@@ -167,7 +168,11 @@ function hangPrint(item) {
     const old = lineItems.pop();
     line.remove(old.group);
   }
-  // newest in the middle of the line, older ones spreading outward
+  layoutLine();
+}
+
+// newest in the middle of the line, older ones spreading outward
+function layoutLine() {
   const gap = (LINE.x1 - LINE.x0) / LINE.slots;
   lineItems.forEach((it, i) => {
     const side = i % 2 ? -1 : 1;
@@ -206,7 +211,9 @@ function addPeer(p) {
   const av = makeAvatar(INKS.includes(p.ink) ? p.ink : INKS[0]);
   av.root.position.set(p.x || 0, 0, p.z || 0);
   scene.add(av.root);
-  const t = tag(p.name, 'tag', 2.15);
+  const t = tag(p.name, 'tag peer', 2.15);
+  t.element.title = 'Hide or show this person';
+  t.element.addEventListener('click', () => askHide(p.id));
   av.root.add(t);
   peers.set(p.id, { av, tagEl: t.element, x: p.x || 0, z: p.z || 0, r: p.r || 0, tx: p.x || 0, tz: p.z || 0, tr: p.r || 0, a: '', name: p.name });
   refreshCount();
@@ -258,8 +265,9 @@ function startNet() {
         }
       },
       chat(m) {
+        if (isHidden(m.id, m.name)) return;
         const p = peers.get(m.id);
-        feed(m.text, '', m.name);
+        feed(m.text, '', m.name, m.id);
         if (p) bubble(p.av.root, m.text);
       },
       hang(m) {
@@ -273,11 +281,57 @@ function startNet() {
   });
 }
 
+// Shared prints arrive as recipes, never as pictures; each browser redraws
+// them from the drawer's specimen with its own engine.
+const configs = {};
 async function sharedPrint(it) {
+  if (isHidden(it.by, it.name)) return;
   try {
-    const img = await imageFrom(it.thumb);
-    hangPrint({ key: 'net-' + it.ts + it.by, mine: net && it.by === net.id, name: it.name, process: it.process, tier: it.tier, img });
-  } catch (e) { /* skip */ }
+    if (!configs[it.process]) configs[it.process] = (await import(`../processes/${it.process}.js`)).default;
+    const img = renderRecipe(configs[it.process], it);
+    hangPrint({ key: 'net-' + it.ts + it.by, by: it.by, mine: net && it.by === net.id, name: it.name, process: it.process, tier: it.tier, img });
+  } catch (e) { /* a recipe this browser cannot draw is skipped */ }
+}
+
+// ---- hiding someone -------------------------------------------------------------------------
+const hidden = new Set(); // peer ids, for this visit
+const hiddenNames = new Set(); // and their names, so earlier prints go too
+const isHidden = (id, name) => hidden.has(id) || hiddenNames.has(name);
+function askHide(id) {
+  const p = peers.get(id);
+  if (!p) return;
+  const menu = $('.hide-menu');
+  const wasHidden = hidden.has(id);
+  menu.querySelector('p').textContent = wasHidden
+    ? `Show ${p.name} again?`
+    : `Hide ${p.name}? You will no longer see their messages or the prints they hang.`;
+  const yes = menu.querySelector('[data-yes]');
+  yes.textContent = wasHidden ? 'Show' : 'Hide';
+  yes.onclick = () => {
+    if (wasHidden) { hidden.delete(id); hiddenNames.delete(p.name); }
+    else { hidden.add(id); hiddenNames.add(p.name); }
+    applyHidden(id);
+    menu.hidden = true;
+  };
+  menu.hidden = false;
+}
+$('.hide-menu [data-no]').addEventListener('click', () => { $('.hide-menu').hidden = true; });
+function applyHidden(id) {
+  const p = peers.get(id);
+  const off = hidden.has(id);
+  if (p) {
+    p.tagEl.classList.toggle('muted', off);
+    p.av.root.traverse((o) => { if (o.isCSS2DObject && o.element.classList.contains('bubble')) o.element.hidden = off; });
+  }
+  if (off) {
+    for (let i = lineItems.length - 1; i >= 0; i--) {
+      if (!lineItems[i].mine && (lineItems[i].by === id || (p && lineItems[i].name === p.name))) {
+        line.remove(lineItems[i].group);
+        lineItems.splice(i, 1);
+      }
+    }
+    layoutLine();
+  }
 }
 
 // ---- HUD -----------------------------------------------------------------------------------
@@ -319,14 +373,19 @@ $('[data-new-room]').addEventListener('click', () => {
   location.href = url.toString();
 });
 
-function feed(text, cls = '', who = '') {
+function feed(text, cls = '', who = '', id = '') {
   const list = $('.feed');
   const li = document.createElement('li');
   if (cls) li.className = cls;
   if (who) {
-    const b = document.createElement('b');
-    b.textContent = who + ' ';
-    li.appendChild(b);
+    const b = document.createElement(id ? 'button' : 'b');
+    b.className = 'who';
+    b.textContent = who;
+    if (id) {
+      b.title = 'Hide or show this person';
+      b.addEventListener('click', () => askHide(id));
+    }
+    li.append(b, ' ');
   }
   li.appendChild(document.createTextNode(text));
   list.appendChild(li);
@@ -393,8 +452,8 @@ function pressed(p) {
   img.getContext('2d').drawImage(p.print, 0, 0, img.width, img.height);
   hangPrint({ key: 'own-' + Date.now(), mine: true, name: prefs.name, process: p.process, tier: p.tier, img });
   refreshSeals();
-  if (p.specimen && !p.skipped && net && net.online) {
-    net.hang({ process: p.process, tier: p.tier, thumb: img.toDataURL('image/jpeg', 0.72) });
+  if (p.specimen && p.recipe && !p.skipped && net && net.online) {
+    net.hang({ process: p.process, tier: p.tier, ...p.recipe });
     toast('Hung on the shared line for everyone in the room.');
   } else if (net && net.online) {
     toast(p.specimen ? 'Hung on your line. Prints the studio made for you stay private.' : 'Hung on your line. Prints of your own photographs stay on your device.');
@@ -853,7 +912,7 @@ function frame() {
   if (entered) findNearest();
 
   for (const p of peers.values()) {
-    const k = Math.min(1, dt * 8);
+    const k = Math.min(1, dt * 6);
     const ox = p.x;
     const oz = p.z;
     p.x += (p.tx - p.x) * k;
@@ -880,7 +939,7 @@ function frame() {
 
   if (net && entered) {
     sendTimer += dt;
-    if (sendTimer > 0.12) {
+    if (sendTimer > 0.25) {
       sendTimer = 0;
       net.pos(player.x, player.z, player.r, player.activity);
     }

@@ -1,8 +1,9 @@
 // The atelier's presence server: one Durable Object per room. It relays
-// where apprentices stand, short chat lines, and specimen prints hung on
-// the shared drying line. Chat is never stored. The line keeps at most
-// 14 prints, each for 24 hours. No photograph of a visitor ever arrives
-// here; the client only sends prints made from the drawer's specimen.
+// where apprentices stand, short chat lines, and the recipes of specimen
+// prints hung on the shared drying line. Chat is never stored. The line
+// keeps at most 14 recipes, each for 24 hours. No image of any kind is
+// accepted: a print on the line is a handful of numbers that each browser
+// redraws from the drawer's specimen plate.
 
 const ORIGINS = [
   'https://binyoun.github.io',
@@ -14,7 +15,6 @@ const TIERS = ['thin', 'pale', 'fine', 'over', 'fair'];
 const MAX_PEOPLE = 40;
 const LINE_MAX = 14;
 const LINE_TTL = 24 * 60 * 60 * 1000;
-const THUMB_MAX = 90000; // characters of base64 JPEG
 const INK = /^#[0-9a-f]{6}$/i;
 
 const cors = (origin) => ({
@@ -40,6 +40,18 @@ export default {
 };
 
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, n);
+
+// A short list of words the studio will not repeat, in English and
+// Vietnamese, matched as whole words and starred out. Not a moderator,
+// just a floor; visitors can also hide anyone from their own view.
+const BLOCK = [
+  'fuck', 'fucking', 'fucker', 'motherfucker', 'shit', 'bullshit', 'cunt', 'bitch', 'bastard',
+  'dick', 'cock', 'pussy', 'asshole', 'slut', 'whore', 'porn', 'rape', 'nigger', 'nigga',
+  'faggot', 'fag', 'retard', 'kys',
+  'địt', 'đụ', 'lồn', 'cặc', 'buồi', 'đéo', 'đĩ', 'vãi lồn', 'đm', 'dm', 'dmm', 'đmm', 'vcl', 'vkl', 'clgt', 'cc', 'đcm', 'dcm',
+];
+const BLOCK_RE = new RegExp(`(?<![\\p{L}\\p{N}])(${BLOCK.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\p{L}\\p{N}])`, 'giu');
+const tidy = (s) => s.replace(BLOCK_RE, (w) => '*'.repeat([...w].length));
 const num = (v, lo, hi) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : 0);
 
 export class Atelier {
@@ -78,14 +90,14 @@ export class Atelier {
   }
 
   async webSocketMessage(ws, raw) {
-    if (typeof raw !== 'string' || raw.length > THUMB_MAX + 400) return;
+    if (typeof raw !== 'string' || raw.length > 600) return;
     let m;
     try { m = JSON.parse(raw); } catch (e) { return; }
     const a = ws.deserializeAttachment() || {};
     const now = Date.now();
 
     if (m.t === 'hello' && !a.name) {
-      a.name = clean(m.name, 24) || 'Apprentice';
+      a.name = tidy(clean(m.name, 24)) || 'Apprentice';
       a.ink = INK.test(m.ink) ? m.ink : '#274a86';
       a.x = 0; a.z = 3.5; a.r = Math.PI; a.a = '';
       ws.serializeAttachment(a);
@@ -97,6 +109,8 @@ export class Atelier {
     if (!a.name) return;
 
     if (m.t === 'pos') {
+      if (now - (a.lastPos || 0) < 150) return;
+      a.lastPos = now;
       a.x = num(m.x, -24, 24);
       a.z = num(m.z, -9, 9);
       a.r = num(m.r, -100, 100);
@@ -105,7 +119,7 @@ export class Atelier {
       this.broadcast({ t: 'pos', id: a.id, x: a.x, z: a.z, r: a.r, a: a.a }, ws);
     } else if (m.t === 'chat') {
       if (now - (a.lastChat || 0) < 1200) return;
-      const text = clean(m.text, 140);
+      const text = tidy(clean(m.text, 140));
       if (!text) return;
       a.lastChat = now;
       ws.serializeAttachment(a);
@@ -113,10 +127,22 @@ export class Atelier {
     } else if (m.t === 'hang') {
       if (now - (a.lastHang || 0) < 15000) return;
       if (!PROCESSES.includes(m.process) || !TIERS.includes(m.tier)) return;
-      if (typeof m.thumb !== 'string' || !m.thumb.startsWith('data:image/jpeg;base64,') || m.thumb.length > THUMB_MAX) return;
+      if (!Number.isInteger(m.seed) || m.seed < 0 || m.seed > 2147483646) return;
       a.lastHang = now;
       ws.serializeAttachment(a);
-      const item = { by: a.id, name: a.name, process: m.process, tier: m.tier, thumb: m.thumb, ts: now };
+      // only these numbers are kept; anything else in the message is dropped
+      const item = {
+        by: a.id,
+        name: a.name,
+        process: m.process,
+        tier: m.tier,
+        seed: m.seed,
+        exposure: num(m.exposure, 0, 3),
+        adj: num(m.adj, 0.5, 1.6),
+        contrast: num(m.contrast, 0.6, 1.6),
+        tone: num(m.tone, -1, 1),
+        ts: now,
+      };
       const items = await this.line();
       items.unshift(item);
       await this.state.storage.put('line', items.slice(0, LINE_MAX));

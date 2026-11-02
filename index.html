@@ -53,8 +53,9 @@
     <p class="entry-alt">Prefer a page? <a href="lab/">Use the flat lab</a>, or
     <a href="history/">read the history</a>.</p>
     <p class="entry-privacy">Others in the atelier see your name, your apron and where you
-    stand. Your photographs never leave this device; only prints made from the drawer's
-    specimen plate can hang on the shared line.</p>
+    stand. Your photographs never leave this device. Prints made from the drawer's
+    specimen plate can hang on the shared line; only their recipe is sent, and each
+    browser redraws them. Chat is not kept. Tap someone's name to hide them.</p>
     <p class="entry-nogl">This browser cannot draw the atelier (it needs WebGL). The
     <a href="lab/">flat lab</a> has every process.</p>
   </div>
@@ -86,6 +87,11 @@
 </div>
 
 <div class="toast" role="status" hidden></div>
+
+<div class="hide-menu" role="dialog" aria-label="Hide a person" hidden>
+  <p></p>
+  <div><button class="btn" data-yes>Hide</button><button class="btn ghost" data-no>Cancel</button></div>
+</div>
 
 <div class="print-card" hidden>
   <img alt="A print from the drying line">
