@@ -47,6 +47,8 @@ export function connect({ room, name, ink, on }) {
     },
     chat(text) { send({ t: 'chat', text }); },
     hang(item) { send({ t: 'hang', ...item }); },
+    handoff(sheet) { send({ t: 'handoff', ...sheet }); },
+    pairdone(to, process, tier) { send({ t: 'pairdone', to, process, tier }); },
     close() { closed = true; if (ws) ws.close(); },
   };
 

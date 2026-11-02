@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Class Line · The Alternative Process Lab</title>
+<meta name="description" content="A teacher's view of one atelier room: who is working, and every print on its drying line.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#101114">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../img/icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="stylesheet" href="../css/main.css">
+<link rel="stylesheet" href="../css/line.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="site-title" href="../">The Alternative Process Lab</a>
+    <nav class="site-nav">
+      <a href="../">Atelier</a>
+      <a href="../lab/">Lab</a>
+      <a href="../history/">History</a>
+      <a href="../about/">About</a>
+    </nav>
+  </div>
+</header>
+
+<main class="line-page">
+  <h1>The class line</h1>
+  <form class="room-form">
+    <label>Room <input name="room" placeholder="class-ab12" spellcheck="false" autocomplete="off"></label>
+    <button class="btn">Show</button>
+    <a class="btn ghost" data-enter hidden>Walk into this room</a>
+  </form>
+  <p class="line-note">Everything apprentices in this room have hung on the shared line: prints made
+  from the drawer specimen, redrawn here from their recipes. Class rooms (codes starting
+  <code>class-</code>) keep up to 80 prints for 14 days; the open commons keeps 14 for a day.
+  Prints of students' own photographs never leave their devices, so they do not appear here.</p>
+
+  <section class="now">
+    <h2>In the room now</h2>
+    <ul class="people"></ul>
+  </section>
+
+  <section>
+    <div class="line-head">
+      <h2>On the line</h2>
+      <button class="btn ghost" data-csv disabled>Download as CSV</button>
+    </div>
+    <div class="tally"></div>
+    <div class="grid"></div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">Refreshes every 20 seconds. <span class="updated"></span></div>
+</footer>
+
+<script type="module" src="../js/line-page.js"></script>
+</body>
+</html>

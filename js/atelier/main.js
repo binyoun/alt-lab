@@ -270,9 +270,28 @@ function startNet() {
         feed(m.text, '', m.name, m.id);
         if (p) bubble(p.av.root, m.text);
       },
+      handoff(m) {
+        if (isHidden(m.from, m.name)) return;
+        sheets[m.process] = m;
+        const bench = BENCHES.find((b) => b.id === m.process);
+        toast(`${m.name} hands you a coated ${bench.name.toLowerCase()} sheet. Take it to the ${bench.name.toLowerCase()} bench to expose it.`);
+        feed(`${m.name} hands you a coated ${bench.name.toLowerCase()} sheet.`, 'sys');
+      },
+      pairdone(m) {
+        const bench = BENCHES.find((b) => b.id === m.process);
+        const lines = [`${m.name} exposed the ${bench.name.toLowerCase()} sheet you coated: the Master calls it ${m.tier}.`];
+        if (m.tier === 'fine') {
+          for (const c of COMMISSIONS) {
+            if (c.pair && c.process === m.process && ledger.fulfil(c.id)) lines.push(`Commission fulfilled: ${c.from}.`);
+          }
+        }
+        toast(lines.join(' '));
+        feed(lines[0], 'sys');
+      },
       hang(m) {
         sharedPrint(m.item);
-        if (!net || m.item.by !== net.id) {
+        // the coater already heard from their partner; no second toast
+        if ((!net || m.item.by !== net.id) && !m.item.name.endsWith(` & ${prefs.name}`)) {
           const what = `${m.item.tier === 'fine' ? 'fine ' : ''}${((PROCESSES[m.item.process] || {}).name || 'print').toLowerCase()}`;
           toast(`${m.item.name} hung ${/^[aeiou]/.test(what) ? 'an' : 'a'} ${what} on the line.`);
         }
@@ -366,6 +385,7 @@ $('[data-copy-room]').addEventListener('click', async () => {
     toast(url.toString());
   }
 });
+$('[data-line-link]').href = `line/?room=${room}`;
 $('[data-new-room]').addEventListener('click', () => {
   const code = 'class-' + Math.random().toString(36).slice(2, 6);
   const url = new URL(location.href);
@@ -433,13 +453,28 @@ const masterOverlay = $('.master-overlay');
 let ritual = null;
 let overlayOpen = null;
 
+// sheets partners have coated and handed to you, waiting at their bench
+const sheets = {};
+
 async function openBench(id) {
   const mod = await import(`../processes/${id}.js`);
   overlayOpen = 'bench';
   benchOverlay.hidden = false;
   document.body.classList.add('in-overlay');
   player.activity = id;
-  ritual = startRitual(benchHost, mod.default, { onPress: pressed });
+  const hooks = { onPress: pressed };
+  if (net && net.online) {
+    hooks.partners = () => [...peers.entries()]
+      .filter(([pid, p]) => !isHidden(pid, p.name))
+      .map(([pid, p]) => ({ id: pid, name: p.name }));
+    hooks.handoff = (sheet) => net.handoff(sheet);
+  }
+  if (sheets[id]) {
+    const s = sheets[id];
+    delete sheets[id];
+    hooks.preset = { seed: s.seed, points: s.points, from: { id: s.from, name: s.name } };
+  }
+  ritual = startRitual(benchHost, mod.default, hooks);
   benchHost.scrollTop = 0;
   sound.setScene('room');
 }
@@ -452,8 +487,9 @@ function pressed(p) {
   img.getContext('2d').drawImage(p.print, 0, 0, img.width, img.height);
   hangPrint({ key: 'own-' + Date.now(), mine: true, name: prefs.name, process: p.process, tier: p.tier, img });
   refreshSeals();
+  if (p.partner && net && net.online) net.pairdone(p.partner.id, p.process, p.skipped ? 'thin' : p.tier);
   if (p.specimen && p.recipe && !p.skipped && net && net.online) {
-    net.hang({ process: p.process, tier: p.tier, ...p.recipe });
+    net.hang({ process: p.process, tier: p.tier, ...p.recipe, ...(p.partner ? { with: p.partner.id } : {}) });
     toast('Hung on the shared line for everyone in the room.');
   } else if (net && net.online) {
     toast(p.specimen ? 'Hung on your line. Prints the studio made for you stay private.' : 'Hung on your line. Prints of your own photographs stay on your device.');

@@ -12,7 +12,10 @@ const DEFAULT_REMARKS = {
 export function judge(config, result) {
   const eff = (result.exposure * result.adj) / config.idealExposure;
   let tier;
-  if (result.coverage < 0.15) tier = 'thin';
+  // Lumen paper comes coated from the box; its mask is leaves laid on top,
+  // so there is no coating to judge thin.
+  const precoated = config.brushMode === 'leaf';
+  if (!precoated && result.coverage < 0.15) tier = 'thin';
   else if (eff < 0.62) tier = 'pale';
   else if (eff >= 0.72 && eff <= 1.45) tier = 'fine';
   else if (eff > 1.6) tier = 'over';

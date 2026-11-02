@@ -103,6 +103,8 @@ export function startRitual(root, config, hooks = {}) {
     image: null, // offscreen canvas with the photo
     specimen: false, // the drawer's botanical plate, not the visitor's photo
     seed: 0,         // how the drawer's plate was laid out, for recipes
+    strokes: [],     // hand coating as normalised [x, y, newStroke] triples; null once the studio coats
+    partner: null,   // { id, name } of the apprentice who coated this sheet
   };
 
   // ---- the Master's judgment and the ledger -----------------------------
@@ -134,7 +136,7 @@ export function startRitual(root, config, hooks = {}) {
     if (state.pressed) return;
     state.pressed = true;
     const v = judgement();
-    const payload = { ...resultPayload(), tier: v.tier, eff: v.eff };
+    const payload = { ...resultPayload(), tier: v.tier, eff: v.eff, paired: !!state.partner };
 
     const thumb = document.createElement('canvas');
     thumb.width = 168;
@@ -152,6 +154,7 @@ export function startRitual(root, config, hooks = {}) {
         tier: v.tier,
         skipped: state.skipped,
         specimen: state.specimen,
+        partner: state.partner,
         // enough to redraw a specimen print elsewhere without sending it
         recipe: state.specimen ? {
           seed: state.seed,
@@ -214,7 +217,7 @@ export function startRitual(root, config, hooks = {}) {
     btn.hidden = false;
     btn.textContent = open
       ? (open === 1 ? 'A letter waits for you' : `${open} letters wait for you`)
-      : 'Letters, both answered';
+      : 'Every letter answered';
     btn.classList.toggle('all-done', open === 0);
   }
 
@@ -238,6 +241,7 @@ export function startRitual(root, config, hooks = {}) {
     else if (auto === 'scatter') state.brush.autoScatter(config.margin);
     else state.brush.autoCoat(config.margin);
     state.handCoated = false; // the studio did this one
+    state.strokes = null;
     state.maskDirty = true;
   }
 
@@ -311,6 +315,8 @@ export function startRitual(root, config, hooks = {}) {
     state.handCoated = false;
     state.pressed = false;
     state.skipped = false;
+    state.strokes = [];
+    state.partner = null;
 
     uploadPanel.hidden = true;
     canvas.hidden = false;
@@ -362,6 +368,9 @@ export function startRitual(root, config, hooks = {}) {
       addButton(stage.next, () => advance(stage));
     } else if (type === 'paint') {
       addButton(stage.autoLabel || 'Coat for me', () => autoApply(stage), 'ghost');
+      if (hooks.handoff && hooks.partners && state.specimen && config.brushMode !== 'leaf') {
+        addButton('Hand it to a partner', () => choosePartner(stage), 'ghost');
+      }
       addButton(stage.next, () => {
         if (stage.minCoverage !== 0 && state.brush.coverage() < 0.04) {
           captionEl.innerHTML = stage.bareText ||
@@ -451,6 +460,8 @@ export function startRitual(root, config, hooks = {}) {
         state.pressed = false;
         state.handCoated = false;
         state.skipped = false;
+        state.strokes = [];
+        state.partner = null;
         setStage(firstPaint().id);
       }, 'ghost', row);
       addButton('New photograph', () => {
@@ -499,6 +510,70 @@ export function startRitual(root, config, hooks = {}) {
     setStage(config.stages[config.stages.length - 1].id);
   });
 
+  // ---- working in pairs: one apprentice coats, the other exposes ---------
+  function record([x, y], fresh) {
+    if (!state.strokes || state.strokes.length >= 4500) return;
+    state.strokes.push(+(x / canvas.width).toFixed(3), +(y / canvas.height).toFixed(3), fresh);
+  }
+
+  function choosePartner(stage) {
+    if (!state.strokes || !state.strokes.length || state.brush.coverage() < 0.04) {
+      captionEl.innerHTML = 'Coat the sheet by your own hand first. A partner can only expose what you have brushed.';
+      return;
+    }
+    const people = hooks.partners();
+    controlsEl.innerHTML = '';
+    if (!people.length) {
+      captionEl.innerHTML = 'Nobody else is in the atelier to hand it to. Share the room link and try again.';
+      addButton('Back to the brush', () => buildControls('paint', stage), 'ghost');
+      return;
+    }
+    captionEl.innerHTML = 'Who should expose this sheet? It goes to them as it is; they take it into the light.';
+    for (const p of people) {
+      addButton(p.name, () => {
+        hooks.handoff({ to: p.id, process: config.id, seed: state.seed, points: state.strokes });
+        captionEl.innerHTML = `You hand the coated sheet to <strong>${escapeHtml(p.name)}</strong>. When they bring it out of the wash, you will hear how it turned out.`;
+        controlsEl.innerHTML = '';
+        addButton('Coat another sheet', () => {
+          state.brush.clear();
+          state.strokes = [];
+          state.maskDirty = true;
+          buildControls('paint', stage);
+          captionEl.innerHTML = stage.caption;
+        }, 'ghost');
+      });
+    }
+    addButton('Never mind', () => { buildControls('paint', stage); captionEl.innerHTML = stage.caption; }, 'ghost');
+  }
+
+  function escapeHtml(t) {
+    return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // A sheet a partner coated: lay out the same specimen, replay their brush,
+  // and start at the exposure.
+  if (hooks.preset) {
+    const { seed, points, from } = hooks.preset;
+    state.seed = seed;
+    state.image = withSeed(seed, () => botanicalPlate(1600, 1200));
+    state.specimen = true;
+    beginRitual();
+    for (let i = 0; i + 2 < points.length; i += 3) {
+      const x = points[i] * canvas.width;
+      const y = points[i + 1] * canvas.height;
+      if (points[i + 2]) { state.brush.end(); state.brush.begin(x, y); } else state.brush.moveTo(x, y);
+    }
+    state.brush.end();
+    state.maskDirty = true;
+    state.strokes = null;
+    state.partner = from;
+    const hold = config.stages.find((s) => stageType(s) === 'hold');
+    if (REDUCED) applyStage(hold.id); else setStage(hold.id);
+    setTimeout(() => {
+      captionEl.innerHTML = `<strong>${escapeHtml(from.name)}</strong> coated this sheet for you. ` + hold.caption;
+    }, 260);
+  }
+
   // ---- canvas pointer: painting, and tilt on the finished plate --------
   function maskPoint(e) {
     const r = canvas.getBoundingClientRect();
@@ -512,7 +587,9 @@ export function startRitual(root, config, hooks = {}) {
     if (stageType(config.stages[stageIndex(state.stage)]) !== 'paint') return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    state.brush.begin(...maskPoint(e));
+    const pt = maskPoint(e);
+    state.brush.begin(...pt);
+    record(pt, 1);
     state.handCoated = true;
     state.maskDirty = true;
     sound.brush(0.6);
@@ -520,7 +597,9 @@ export function startRitual(root, config, hooks = {}) {
   canvas.addEventListener('pointermove', (e) => {
     const type = stageType(config.stages[stageIndex(state.stage)]);
     if (type === 'paint' && e.buttons !== 0) {
-      state.brush.moveTo(...maskPoint(e));
+      const pt = maskPoint(e);
+      state.brush.moveTo(...pt);
+      record(pt, 0);
       state.handCoated = true;
       state.maskDirty = true;
       const now = performance.now();

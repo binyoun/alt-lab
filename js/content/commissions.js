@@ -229,6 +229,36 @@ export const COMMISSIONS = [
     goal: 'Print with no leaves at all, the photograph alone, well exposed.',
     check: (r) => r.coverage < 0.03 && r.eff >= 0.72 && r.eff <= 1.45,
   },
+
+  // Pair work, only possible in the atelier: one apprentice coats a sheet
+  // and hands it over, the other exposes and washes it. Both are credited
+  // when the print comes out fine.
+  {
+    id: 'cyan-pair',
+    process: 'cyanotype',
+    pair: true,
+    from: 'Miss Anne Dixon',
+    year: 1854,
+    letter:
+      'Anna and I made our book of ferns between us: one coated while the other ' +
+      'laid out the specimens and watched the sun. Work as we did. One of you ' +
+      'brushes the sheet, the other gives it its light.',
+    goal: 'In the atelier, make a fine cyanotype with a partner: one coats and hands it over, the other exposes it.',
+    check: (r) => r.paired && r.tier === 'fine',
+  },
+  {
+    id: 'salt-pair',
+    process: 'saltprint',
+    pair: true,
+    from: 'Nicolaas Henneman, the Reading Establishment',
+    year: 1844,
+    letter:
+      'At Reading we print Mr Talbot\'s pictures by the hundred, and no hand does ' +
+      'every step. I want to see that you can pass a sensitised sheet to a ' +
+      'colleague and trust them with it.',
+    goal: 'In the atelier, make a fine salt print with a partner: one coats and hands it over, the other exposes it.',
+    check: (r) => r.paired && r.tier === 'fine',
+  },
 ];
 
 export const commissionsFor = (processId) =>

@@ -1,0 +1,42 @@
+/* The class line: a teacher's view of one atelier room. */
+
+.line-page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 40px; }
+.line-page h1 { font-family: var(--serif); font-weight: 400; font-size: 2rem; }
+.line-page h2 { font-family: var(--serif); font-weight: 400; font-size: 1.3rem; margin: 26px 0 10px; }
+.room-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 10px; }
+.room-form label { display: flex; gap: 8px; align-items: center; color: var(--ink-dim); font-size: 0.9rem; }
+.room-form input {
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  padding: 5px 10px;
+  width: 180px;
+}
+.line-note { font-family: var(--prose); color: var(--ink-dim); max-width: 46em; }
+.line-note code { font-size: 0.85em; color: var(--ink); }
+.people { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+.people li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  font-family: var(--prose);
+}
+.people .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.people small { color: var(--ink-dim); font-style: italic; }
+.people .empty { background: none; border: 0; padding: 0; color: var(--ink-dim); }
+.line-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tally { font-family: var(--prose); color: var(--ink-dim); margin-bottom: 14px; }
+.tally b { color: var(--ink); font-weight: 400; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+.grid figure { background: var(--bg-raise); border: 1px solid var(--line); }
+.grid canvas { display: block; width: 100%; height: auto; }
+.grid figcaption { padding: 8px 10px 10px; font-family: var(--prose); font-size: 0.98rem; }
+.grid figcaption small { display: block; color: var(--ink-dim); font-size: 0.85rem; }
+.grid .tier-fine { color: #9fc79a; }
+.grid .tier-over, .grid .tier-thin { color: #d49a8a; }
+.grid .none { color: var(--ink-dim); font-family: var(--prose); }

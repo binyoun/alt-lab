@@ -174,7 +174,7 @@ body.no-webgl .entry-nogl { display: block; color: var(--parchment); margin-top:
 .room-status { font-family: var(--serif); font-size: 0.95rem; }
 .room-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .room-tools[hidden] { display: none; }
-.room-tools button, .overlay-bar kbd, .prompt kbd {
+.room-tools button, .room-tools a, .overlay-bar kbd, .prompt kbd {
   font: inherit;
   font-size: 0.72rem;
   color: var(--ink-dim);
@@ -183,7 +183,7 @@ body.no-webgl .entry-nogl { display: block; color: var(--parchment); margin-top:
   padding: 2px 8px;
   cursor: pointer;
 }
-.room-tools button:hover { color: var(--ink); border-color: var(--ink-dim); }
+.room-tools button:hover, .room-tools a:hover { color: var(--ink); border-color: var(--ink-dim); text-decoration: none; }
 .hud .site-nav {
   background: rgba(16, 14, 10, 0.7);
   padding: 6px 12px;
