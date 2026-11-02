@@ -30,6 +30,9 @@ function persist() {
 export const ledger = {
   get: () => state,
 
+  // another page (the ledger, in an atelier overlay) may have written
+  reload() { state = load(); },
+
   begin() {
     if (!state.began) { state.began = new Date().toISOString(); persist(); }
   },

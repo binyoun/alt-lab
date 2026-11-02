@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Alternative Process Lab</title>
-<meta name="description" content="Print your photograph the way it would have been printed in 1842. A browser darkroom for the early processes of photography.">
+<meta name="description" content="A shared nineteenth century atelier in the browser. Walk to a bench and print your photograph as a cyanotype, daguerreotype, tintype or salt print, alongside other apprentices.">
 <meta name="theme-color" content="#101114">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="img/icons/favicon-32.png" type="image/png" sizes="32x32">
@@ -12,54 +12,128 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="The Alternative Process Lab">
 <meta property="og:title" content="The Alternative Process Lab">
-<meta property="og:description" content="Print your photograph the way it would have been printed in 1842. A browser darkroom for the early processes of photography.">
+<meta property="og:description" content="A shared nineteenth century atelier in the browser. Walk to a bench and print your photograph the way it was printed in 1842.">
 <meta property="og:image" content="https://binyoun.github.io/alt-lab/img/og.jpg">
 <meta property="og:url" content="https://binyoun.github.io/alt-lab/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/atelier.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
 </head>
-<body>
-<header class="site-header">
-  <div class="wrap">
-    <span class="site-title">The Alternative Process Lab</span>
+<body class="atelier">
+<canvas id="world" tabindex="0" aria-label="The atelier, a 3D studio you can walk through"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<section class="entry">
+  <div class="entry-card">
+    <p class="entry-kicker">The Alternative Process Lab</p>
+    <h1>Photography began as chemistry.</h1>
+    <p class="entry-lede">Iron salts, silver, egg white, plant juice, and sunlight. Walk into
+    a nineteenth century atelier, step up to a bench, and print your photograph the
+    way it was printed in 1842. Other apprentices may be working beside you.</p>
+    <form autocomplete="off">
+      <label class="entry-field">
+        <span>Your name in the studio</span>
+        <input name="name" maxlength="24" spellcheck="false">
+      </label>
+      <div class="entry-field">
+        <span>Your apron</span>
+        <div class="swatches"></div>
+      </div>
+      <button class="btn enter-btn" type="submit">Walk into the atelier</button>
+    </form>
+    <p class="entry-count"></p>
+    <p class="entry-alt">Prefer a page? <a href="lab/">Use the flat lab</a>, or
+    <a href="history/">read the history</a>.</p>
+    <p class="entry-privacy">Others in the atelier see your name, your apron and where you
+    stand. Your photographs never leave this device; only prints made from the drawer's
+    specimen plate can hang on the shared line.</p>
+    <p class="entry-nogl">This browser cannot draw the atelier (it needs WebGL). The
+    <a href="lab/">flat lab</a> has every process.</p>
+  </div>
+</section>
+
+<div class="hud" hidden>
+  <div class="hud-top">
+    <div class="room">
+      <span class="room-status"></span>
+      <span class="room-tools" hidden>
+        <button data-copy-room>Copy room link</button>
+        <button data-new-room>Open a new room</button>
+      </span>
+    </div>
     <nav class="site-nav">
-      <a href="lab/">Lab</a>
+      <a href="lab/">Flat lab</a>
       <a href="history/">History</a>
       <a href="ledger/">Ledger</a>
       <a href="about/">About</a>
     </nav>
   </div>
-</header>
-
-<main>
-  <section class="hero hero-scene">
-    <canvas class="hero-canvas" aria-hidden="true"></canvas>
-    <div class="wrap">
-      <h1>Photography began as chemistry.</h1>
-      <p>Iron salts, silver, egg white, plant juice, and sunlight. Bring a photograph
-      from your phone and walk it through a darkroom from another century. The print
-      develops in front of you, and the picture never leaves your device.</p>
-      <div class="hero-doors">
-        <a class="enter" href="lab/">Enter the studio</a>
-        <a class="enter quiet" href="history/">Read the history</a>
-      </div>
-      <p class="hero-note">Behind this text: a cyanotype developing live, printed by
-      the same engine you are about to use.</p>
+  <div class="hud-bottom">
+    <div class="talk">
+      <ul class="feed" aria-live="polite"></ul>
+      <form class="chat"><input maxlength="140" placeholder="Say something (T)" aria-label="Say something to the room"></form>
     </div>
-  </section>
+    <button class="prompt" hidden><kbd>E</kbd><span></span></button>
+  </div>
+</div>
 
-</main>
+<div class="toast" role="status" hidden></div>
 
-<footer class="site-footer">
-  <div class="wrap"><nav class="footer-nav"><a href="lab/">Lab</a><a href="history/">History</a><a href="ledger/">Ledger</a><a href="about/">About</a></nav>
-    Every process runs in your browser. No photograph is uploaded.<br><span class="copyright">© 2026 Bin Youn · The Alternative Process Lab</span></div>
-</footer>
+<div class="print-card" hidden>
+  <img alt="A print from the drying line">
+  <p></p>
+  <small>Tap anywhere to close</small>
+</div>
 
-<script type="module">
-  import { startHero } from './js/landing-hero.js';
-  try { startHero(document.querySelector('.hero-canvas')); } catch (e) { /* no WebGL2: quiet dark hero */ }
+<div class="bench-overlay" hidden>
+  <div class="overlay-bar"><button class="btn ghost" data-close>Step back from the bench</button><kbd>Esc</kbd></div>
+  <div class="bench-host"></div>
+</div>
+
+<div class="page-overlay" hidden>
+  <div class="overlay-bar"><button class="btn ghost" data-close>Back to the atelier</button><kbd>Esc</kbd></div>
+  <iframe title="Studio page"></iframe>
+</div>
+
+<div class="master-overlay letters-overlay" hidden>
+  <div class="letters-sheaf"></div>
+</div>
+
+<div class="welcome letters-overlay" hidden>
+  <div class="letters-sheaf">
+    <article class="letter">
+      <div class="letter-from">The Master of the studio</div>
+      <p>So you are the new apprentice. Good; the last one ran off with a
+      tintypist. The rules of this house are few. Work in dim light. Coat
+      what you mean to print. Take only the sun you need, then wash.</p>
+      <p>Nine benches wait, each with its own chemistry: the iron prints out in
+      the courtyard where the sun is, the plates in the dark corner, the
+      plant prints in the garden. Letters arrive from people who want things
+      made. Bring me a print worth keeping and I will press the studio's seal
+      beside it in your ledger. You will find me at my desk.</p>
+      <div class="letter-goal">Your photographs stay on this device. Only your name,
+      your apron and where you stand are seen by others.</div>
+    </article>
+    <button class="btn" data-apron>Take up the apron</button>
+  </div>
+</div>
+
+<script>
+  // no WebGL2: say so on the entry card instead of failing silently
+  (function () {
+    try {
+      if (!document.createElement('canvas').getContext('webgl2')) document.body.classList.add('no-webgl');
+    } catch (e) { document.body.classList.add('no-webgl'); }
+  })();
 </script>
-<script src="js/motion.js" defer></script>
-<script type="module" src="js/studio.js"></script>
+<script type="module" src="js/atelier/main.js"></script>
 </body>
 </html>

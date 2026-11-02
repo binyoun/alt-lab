@@ -1,0 +1,11 @@
+name = "alt-lab-atelier"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+[[durable_objects.bindings]]
+name = "ATELIER"
+class_name = "Atelier"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Atelier"]

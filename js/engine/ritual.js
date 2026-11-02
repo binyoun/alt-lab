@@ -27,7 +27,7 @@ const DEFAULT_TYPE = {
   result: 'result',
 };
 
-export function startRitual(root, config) {
+export function startRitual(root, config, hooks = {}) {
   // ---- DOM scaffold -------------------------------------------------
   root.innerHTML = `
     <div class="ritual">
@@ -101,6 +101,7 @@ export function startRitual(root, config) {
     pressed: false,    // this print already sits in the ledger
     skipped: false,    // the studio made this one; the Master seals no shortcuts
     image: null, // offscreen canvas with the photo
+    specimen: false, // the drawer's botanical plate, not the visitor's photo
   };
 
   // ---- the Master's judgment and the ledger -----------------------------
@@ -144,6 +145,16 @@ export function startRitual(root, config) {
       params: { eff: +v.eff.toFixed(2), tone: +state.tone.toFixed(2) },
       thumb: thumb.toDataURL('image/jpeg', 0.7),
     });
+    if (hooks.onPress) {
+      hooks.onPress({
+        process: config.id,
+        tier: v.tier,
+        skipped: state.skipped,
+        specimen: state.specimen,
+        thumb,
+        print: canvas,
+      });
+    }
 
     const lines = [];
     if (state.skipped) {
@@ -234,6 +245,7 @@ export function startRitual(root, config) {
       off.height = Math.round(img.naturalHeight * scale);
       off.getContext('2d').drawImage(img, 0, 0, off.width, off.height);
       state.image = off;
+      state.specimen = false;
       beginRitual();
     };
     img.onerror = () => { captionEl.textContent = 'That image could not be read. Try another.'; };
@@ -244,6 +256,7 @@ export function startRitual(root, config) {
   el('[data-camera]').addEventListener('click', () => el('[data-capture]').click());
   el('[data-specimen]').addEventListener('click', () => {
     state.image = botanicalPlate(1600, 1200);
+    state.specimen = true;
     beginRitual();
   });
   el('[data-file]').addEventListener('change', (e) => loadFile(e.target.files[0]));
@@ -516,7 +529,10 @@ export function startRitual(root, config) {
   // ---- render loop -----------------------------------------------------
   let lastT = performance.now();
   let shownTilt = 0;
+  let rafId = 0;
+  let alive = true;
   function frame(t) {
+    if (!alive) return;
     const dt = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
     if (state.gl && !canvas.hidden) {
@@ -549,9 +565,9 @@ export function startRitual(root, config) {
       });
       state.gl.draw();
     }
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  rafId = requestAnimationFrame(frame);
 
   // ---- download ----------------------------------------------------------
   function downloadPrint() {
@@ -581,4 +597,18 @@ export function startRitual(root, config) {
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     }, 'image/jpeg', 0.92);
   }
+
+  // ---- teardown, for hosts that open and close benches (the atelier) ----
+  return {
+    destroy() {
+      alive = false;
+      cancelAnimationFrame(rafId);
+      if (state.gl) {
+        const ctx = canvas.getContext('webgl2');
+        const lose = ctx && ctx.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      }
+      root.innerHTML = '';
+    },
+  };
 }
