@@ -10,6 +10,7 @@ import { buildStreet, doorOf } from './street.js';
 import { buildAtelier, STATIONS } from './ateliers.js';
 import { buildCountry, skyWords, PLACES } from './country.js';
 import { SPECIMENS, satchel, gather, drawShape } from './specimens.js';
+import { keepView } from './views.js';
 import { openBench as openInWorldBench, ACTIVITY_OF } from './bench.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
@@ -18,7 +19,7 @@ import { ledger } from '../engine/ledger.js';
 import { readLetters } from '../engine/letters.js';
 import { renderRecipe } from '../engine/sample.js';
 import { sound, mountSoundToggle } from '../engine/sound.js';
-import { PROCESSES, COMMISSIONS } from '../content/commissions.js';
+import { PROCESSES, COMMISSIONS, errandsOpen } from '../content/commissions.js';
 
 const $ = (s) => document.querySelector(s);
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -181,6 +182,7 @@ async function go(id, from) {
 
   refreshSeals();
   hangOwnPrints();
+  markErrands();
   try { history.replaceState(null, '', urlFor(id)); } catch (e) { /* file:// */ }
   $('[data-back-square]').hidden = id === 'street';
   refreshMap();
@@ -701,6 +703,7 @@ function interact(it) {
   if (it.kind === 'bench') openBench(it.id);
   else if (it.kind === 'history') openPage(`history/#ch-${it.id}`);
   else if (it.kind === 'gather') pick(it);
+  else if (it.kind === 'tent') openViewfinder(it);
   else if (it.kind === 'exit') {
     if (it.id === 'street') go('street', here.id);
     else if (it.id === 'country') go('country', 'street');
@@ -722,6 +725,7 @@ addEventListener('keydown', (e) => {
     } else if (bench) bench.close();
     else if (overlayOpen === 'map') closeMap();
     else if (overlayOpen === 'satchel') closeSatchel();
+    else if (overlayOpen === 'viewfinder') closeViewfinder();
     else closeOverlay();
     chatInput.blur();
     return;
@@ -752,6 +756,14 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   if (benchPointer('move', e)) return;
+  if (viewShot && drag && drag.id === e.pointerId) {
+    viewAim.yaw = Math.max(-0.6, Math.min(0.6, viewAim.yaw - (e.clientX - drag.x) * 0.003));
+    viewAim.pitch = Math.max(-0.3, Math.min(0.3, viewAim.pitch + (e.clientY - drag.y) * 0.002));
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    drag.moved = true;
+    return;
+  }
   if (!drag || drag.id !== e.pointerId) return;
   const dx = e.clientX - drag.x;
   const dy = e.clientY - drag.y;
@@ -764,6 +776,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerup', (e) => {
   if (benchPointer('up', e)) return;
+  if (viewShot) { drag = null; return; }
   if (!drag) return;
   const tapped = !drag.moved;
   drag = null;
@@ -1044,6 +1057,58 @@ function animateRings(dt, t) {
   }
 }
 
+// ---- the field camera: look through it, aim, take the picture --------------------
+let viewShot = null; // { pos, look, place } while looking through a field camera
+const viewAim = { yaw: 0, pitch: 0 };
+let captureNext = false;
+function openViewfinder(it) {
+  overlayOpen = 'viewfinder';
+  viewShot = { pos: new THREE.Vector3(...it.view.pos), look: new THREE.Vector3(...it.view.look), place: it.id };
+  viewAim.yaw = viewAim.pitch = 0;
+  player.activity = 'photographing';
+  document.body.classList.add('at-bench');
+  $('.viewfinder .vf-title').textContent = it.id;
+  if (here.kit.hideMarkers) here.kit.hideMarkers(true); // a photograph shows the place, not the game
+  $('.viewfinder').hidden = false;
+  promptBtn.hidden = true;
+}
+function closeViewfinder() {
+  if (here && here.kit.hideMarkers) here.kit.hideMarkers(false);
+  viewShot = null;
+  overlayOpen = null;
+  player.activity = '';
+  document.body.classList.remove('at-bench');
+  $('.viewfinder').hidden = true;
+}
+const aimed = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+function aimedView() {
+  const d = viewShot.look.clone().sub(viewShot.pos);
+  d.applyAxisAngle(new THREE.Vector3(0, 1, 0), viewAim.yaw);
+  d.y += viewAim.pitch * d.length();
+  aimed.pos.copy(viewShot.pos);
+  aimed.look.copy(viewShot.pos).add(d);
+  return aimed;
+}
+// the picture is what the scene just rendered, cropped to a plate's 4:3
+function capture() {
+  const src = renderer.domElement;
+  const out = document.createElement('canvas');
+  out.width = 1024;
+  out.height = 768;
+  const sw = Math.min(src.width, src.height * 4 / 3);
+  const sh = sw * 3 / 4;
+  out.getContext('2d').drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, 1024, 768);
+  keepView(viewShot.place, out.toDataURL('image/jpeg', 0.82));
+  const flash = $('.vf-flash');
+  flash.classList.remove('go');
+  void flash.offsetWidth;
+  flash.classList.add('go');
+  sound.thump();
+  toast(`A view of ${viewShot.place} on a plate. Develop it at the Portrait Studio (tintype) or the Plate Room (daguerreotype).`);
+}
+$('[data-vf-expose]').addEventListener('click', () => { captureNext = true; });
+$('[data-vf-back]').addEventListener('click', closeViewfinder);
+
 // ---- gathering, and the satchel ----------------------------------------------
 function pick(it) {
   const sp = SPECIMENS.find((x) => x.id === it.id);
@@ -1052,9 +1117,26 @@ function pick(it) {
   nearest = null;
   promptBtn.hidden = true;
   sound.flip();
-  toast(first ? `New for your herbarium: ${sp.name}. ${sp.note}` : `Gathered ${sp.name.toLowerCase()} (${count} in your satchel).`);
+  const errand = errandsOpen((id) => ledger.fulfilled(id)).find((c) => c.quest.wants.includes(it.id));
+  const why = errand ? ` ${errand.from} asked for this: take it to ${BENCHES.find((x) => x.id === errand.process).atelier}.` : '';
+  toast((first ? `New for your herbarium: ${sp.name}. ${sp.note}` : `Gathered ${sp.name.toLowerCase()} (${count} in your satchel).`) + why);
   refreshSatchel();
+  markErrands();
 }
+// pennants over what open errands want, out in the country
+function markErrands() {
+  if (!here || !here.kit.markWanted) return;
+  const wants = errandsOpen((id) => ledger.fulfilled(id)).flatMap((c) => c.quest.wants);
+  here.kit.markWanted(wants);
+}
+function errandLines() {
+  return errandsOpen((id) => ledger.fulfilled(id)).map((c) => {
+    const b = BENCHES.find((x) => x.id === c.process);
+    const have = c.quest.wants.some((id) => (satchel().items[id] || 0) > 0);
+    return `${c.from}: ${have ? `you have it; now to ${b.atelier}` : `go to ${PLACES[c.quest.place].name}`}`;
+  });
+}
+
 function refreshSatchel() {
   const n = Object.values(satchel().items).reduce((a, b) => a + b, 0);
   $('.satchel-count').textContent = n;
@@ -1150,13 +1232,18 @@ function buildMap() {
   const c = document.createElement('button');
   c.className = 'map-square map-country';
   c.dataset.id = 'country';
-  c.innerHTML = '<b>The Country</b><small>out through the gate: meadow, fern wood, mill stream, shore, Ruin Hill</small>';
+  c.innerHTML = '<b>The Country</b><small>out through the gate: meadow, fern wood, mill stream, shore, Ruin Hill</small><span class="errands"></span>';
   c.addEventListener('click', () => goMap('country'));
   out.append(c);
   grid.append(out);
 }
 buildMap();
 function refreshMap() {
+  const e = document.querySelector('.map-country .errands');
+  if (e) {
+    const lines = errandLines();
+    e.innerHTML = lines.length ? '<em>Errands</em>' + lines.map((l) => `<span>${l}</span>`).join('') : '';
+  }
   document.querySelectorAll('.map-grid [data-id]').forEach((b) => {
     const isHere = here && b.dataset.id === here.id;
     b.classList.toggle('here', isHere);
@@ -1299,7 +1386,7 @@ function frame() {
   else player.speed = 0;
   if (bench) bench.update(dt);
   // at a station the camera looks over your shoulder; step out of its way
-  me.root.visible = !(bench && !bench.walking && (bench.hideMe || Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4));
+  me.root.visible = !(viewShot || (bench && !bench.walking && (bench.hideMe || Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4)));
   const ground = here.kit.heightAt || (() => 0);
   me.root.position.set(player.x, ground(player.x, player.z), player.z);
   me.root.rotation.y = player.r;
@@ -1331,11 +1418,12 @@ function frame() {
   const k = 1 - Math.exp(-dt * 6);
   cam.x += (player.x - cam.x) * k;
   cam.z += (player.z - cam.z) * k;
-  if (bench && bench.shot) {
-    // the bench's shot: glide there, or cut when motion is reduced
+  const shotNow = bench && bench.shot ? bench.shot : viewShot ? aimedView() : null;
+  if (shotNow) {
+    // the bench's (or the field camera's) shot: glide there, or cut when motion is reduced
     const g = REDUCED ? 1 : 1 - Math.exp(-dt * 3.2);
-    camera.position.lerp(bench.shot.pos, g);
-    look.lerp(bench.shot.look, g);
+    camera.position.lerp(shotNow.pos, g);
+    look.lerp(shotNow.look, g);
   } else {
     const cp = Math.cos(cam.pitch) * cam.dist;
     const gy = ground(cam.x, cam.z);
@@ -1346,7 +1434,7 @@ function frame() {
     look.lerp(lookWant.set(cam.x, gy + 1.2, cam.z), g);
     if (gliding && camera.position.distanceTo(want) < 0.05) gliding = false;
   }
-  if (bench) gliding = true;
+  if (bench || viewShot) gliding = true;
   camera.lookAt(look);
   canvas.style.cursor = bench && bench.cursor === 'brush' ? BRUSH_CURSOR : bench && bench.cursor === 'tilt' ? 'ew-resize' : '';
   fadeWalls(dt);
@@ -1361,6 +1449,7 @@ function frame() {
   }
 
   renderer.render(here.scene, camera);
+  if (captureNext) { captureNext = false; capture(); }
   labels.render(here.scene, camera);
 }
 

@@ -10,7 +10,9 @@ import { ledger } from '../engine/ledger.js';
 import { sound } from '../engine/sound.js';
 import { readLetters } from '../engine/letters.js';
 import { commissionsFor, PROCESSES } from '../content/commissions.js';
-import { shapes, dyes, specimenPlate, layOut } from './specimens.js';
+import { shapes, dyes, specimenPlate, layOut, satchel } from './specimens.js';
+import { skyNow, lightFactor, lightWords } from './sky.js';
+import { views, viewImage } from './views.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STATION_OF = { upload: 'coat', info: 'coat', paint: 'coat', hold: 'expose', reveal: 'wash', result: 'result' };
@@ -19,7 +21,9 @@ export const ACTIVITY_OF = { coat: 'coating', expose: 'exposing', wash: 'washing
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function openBench({ config, stations, kit, scene, camera, me, walkTo, setActivity, hooks, placeName, onHang, onClose }) {
-  const core = createRitual(config, { maxCanvas: 1024, hooks });
+  // stations in the sun print at the pace of the sky; lamps and cameras do not
+  const sunlit = stations.expose.shaft !== false;
+  const core = createRitual(config, { maxCanvas: 1024, hooks: { ...hooks, lightRate: () => (sunlit ? lightFactor(skyNow()) : 1) } });
   const { state } = core;
 
   // ---- the sheet ------------------------------------------------------------
@@ -204,18 +208,46 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     const sh = shapes();
     const dy = config.id === 'anthotype' ? dyes() : [];
     const photogram = !CAMERA.includes(config.id) && sh.length;
-    box.hidden = !photogram && !dy.length;
+    const salt = config.id === 'saltprint' && (satchel().items.salt || 0) > 0;
+    const vs = CAMERA.includes(config.id) ? views() : [];
+    box.hidden = !photogram && !dy.length && !salt && !vs.length;
     if (box.hidden) return;
     const head = document.createElement('p');
     head.className = 'card-sub';
-    head.textContent = 'From your satchel';
+    head.textContent = 'From the country';
     box.append(head);
     if (photogram) {
       const b = document.createElement('button');
       b.className = 'btn';
       b.textContent = `Print what you gathered (${sh.length} kind${sh.length === 1 ? '' : 's'})`;
       b.title = sh.map((x) => x.name).join(', ');
-      b.addEventListener('click', () => core.useCanvas(specimenPlate(sh, 1600, 1200, Date.now() % 9973)));
+      b.addEventListener('click', () => core.useCanvas(specimenPlate(sh, 1600, 1200, Date.now() % 9973), sh.map((x) => x.id)));
+      box.append(b);
+    }
+    if (vs.length) {
+      const row = document.createElement('div');
+      row.className = 'view-row';
+      const label = document.createElement('span');
+      label.textContent = 'Develop a view you took in the country:';
+      row.append(label);
+      for (const v of vs) {
+        const b = document.createElement('button');
+        b.className = 'view-thumb';
+        b.title = v.place;
+        b.innerHTML = `<img src="${v.src}" alt="A view of ${esc(v.place)}"><small>${esc(v.place)}</small>`;
+        b.addEventListener('click', async () => core.useCanvas(await viewImage(v), []));
+        row.append(b);
+      }
+      box.append(row);
+    }
+    if (salt) {
+      const b = document.createElement('button');
+      b.className = 'btn ghost' + (state.salted ? ' on' : '');
+      b.textContent = state.salted ? 'Salted with your sea salt' : 'Salt the paper with your sea salt';
+      b.addEventListener('click', () => {
+        core.setSalted(!state.salted);
+        b.textContent = state.salted ? 'Salted with your sea salt' : 'Salt the paper with your sea salt';
+      });
       box.append(b);
     }
     if (dy.length) {
@@ -230,7 +262,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
         b.style.setProperty('--dye', `rgb(${d.dye.map((v) => Math.round(v * 255)).join(',')})`);
         b.textContent = d.name;
         b.addEventListener('click', () => {
-          core.setDye(state.dye === d.dye ? null : d.dye);
+          core.setDye(state.dye === d.dye ? null : d.dye, d.id);
           row.querySelectorAll('.dye').forEach((x) => x.classList.toggle('on', x === b && !!state.dye));
         });
         row.append(b);
@@ -265,6 +297,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       captionEl.innerHTML = captionOverride + stage.caption;
       captionOverride = null;
     } else captionEl.innerHTML = type === 'upload' ? '' : stage.caption;
+    if (type === 'hold' && sunlit) captionEl.innerHTML += `<span class="sky-note">${lightWords(skyNow())}.</span>`;
     el('.skip').hidden = type === 'upload' || type === 'result';
     noteEl.hidden = type !== 'result';
     if (type !== 'result') fulfilledEl.hidden = true;
@@ -304,7 +337,8 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       // lumen paper: lay what you gathered straight onto it
       if (config.brushMode === 'leaf' && shapes().length) {
         addButton('Lay your specimens', () => {
-          core.layShapes((ctx, w, h) => layOut(ctx, w, h, shapes(), { seed: Date.now() % 9973, margin: 0.12 }));
+          const sh = shapes();
+          core.layShapes((ctx, w, h) => layOut(ctx, w, h, sh, { seed: Date.now() % 9973, margin: 0.12 }), sh.map((x) => x.id));
           captionEl.innerHTML = 'Your gathered leaves and fronds lie on the paper, pressed flat under glass.';
         }, 'ghost');
       }

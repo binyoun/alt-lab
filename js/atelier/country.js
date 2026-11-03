@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { makeKit, PALETTE, mat, rand, textSign } from './world.js';
 import { SPECIMENS } from './specimens.js';
+import { skyNow } from './sky.js';
+export { skyWords } from './sky.js';
 
 const SIZE = 38; // walkable half-size
 
@@ -396,6 +398,75 @@ export function buildCountry(scene) {
     }
   }
 
+  // ---- dark tents and field cameras, at three views worth a plate -------------------------
+  const TENTS = [
+    { place: 'Ruin Hill', tent: [12.6, -14.6], cam: [14.6, -16.4], look: [20, -25.5], ry: 0.6 },
+    { place: 'The Mill Stream', tent: [0.8, 3.0], cam: [2.6, 3.6], look: [9.2, -7.5], ry: -0.4 },
+    { place: 'The Shore', tent: [23.6, 16.8], cam: [25.2, 15.2], look: [60, 6], ry: 1.2 },
+  ];
+  for (const t of TENTS) {
+    const [tx, tz] = t.tent;
+    const ty = ground(tx, tz);
+    const tent = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.8, 4), mat('#5a3a22'));
+    tent.position.set(tx, ty + 0.9, tz);
+    tent.rotation.y = Math.PI / 4 + t.ry;
+    tent.castShadow = true;
+    scene.add(tent);
+    kit.collide(tx - 0.8, tz - 0.8, tx + 0.8, tz + 0.8);
+    const [cx, cz] = t.cam;
+    const cy = ground(cx, cz);
+    const g = new THREE.Group();
+    g.position.set(cx, cy, cz);
+    g.rotation.y = Math.atan2(cx - t.look[0], cz - t.look[1]); // lens toward the view
+    scene.add(g);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const leg = kit.cyl(0.02, 0.025, 1.3, PALETTE.wood, Math.cos(a) * 0.2, 0.63, Math.sin(a) * 0.2, g, 5);
+      leg.rotation.z = Math.cos(a) * 0.16;
+      leg.rotation.x = -Math.sin(a) * 0.16;
+    }
+    kit.box(0.4, 0.32, 0.38, PALETTE.wood, 0, 1.38, 0, g);
+    kit.box(0.32, 0.26, 0.28, '#2a1a14', 0, 1.38, -0.32, g);
+    kit.cyl(0.075, 0.075, 0.15, mat(PALETTE.brass, { metalness: 0.7, roughness: 0.35 }), 0, 1.38, -0.53, g).rotation.x = Math.PI / 2;
+    kit.collide(cx - 0.3, cz - 0.3, cx + 0.3, cz + 0.3);
+    const lookY = ground(...t.look) + (t.place === 'The Shore' ? 0.5 : 2.0);
+    const dx = t.look[0] - cx;
+    const dz = t.look[1] - cz;
+    const d = Math.hypot(dx, dz);
+    kit.interactables.push({
+      kind: 'tent', id: t.place, label: `Set up the camera: ${t.place}`,
+      stand: [cx - (dx / d) * 0.9, cz - (dz / d) * 0.9], face: Math.atan2(-dx, -dz), mesh: g,
+      // the eye sits just past the lens, so the camera's own body is not in the picture
+      view: { pos: [cx + (dx / d) * 0.75, cy + 1.42, cz + (dz / d) * 0.75], look: [t.look[0], lookY, t.look[1]] },
+    });
+  }
+
+  // pennants over what an open errand wants
+  const pennant = () => {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.6, 0.04), mat('#3b2618'));
+    pole.position.y = 1.3;
+    g.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), new THREE.MeshBasicMaterial({ color: '#c8384e', side: THREE.DoubleSide }));
+    flag.position.set(0.27, 1.95, 0);
+    g.add(flag);
+    return g;
+  };
+  kit.markWanted = (ids) => {
+    for (const it of kit.gatherables) {
+      const want = ids.includes(it.id) && it.mesh.visible;
+      if (want && !it.flag) { it.flag = pennant(); it.mesh.add(it.flag); }
+      if (it.flag) it.flag.visible = want;
+    }
+  };
+  let wantedNow = [];
+  const mark = kit.markWanted;
+  kit.markWanted = (ids) => { wantedNow = ids; mark(ids); };
+  kit.hideMarkers = (hide) => {
+    for (const it of kit.gatherables) if (it.flag) it.flag.visible = !hide && wantedNow.includes(it.id) && it.mesh.visible;
+    for (const it of kit.gatherables) it.spark.visible = !hide;
+  };
+
   // ---- life: clouds, birds and butterflies ----------------------------------------------------
   const clouds = [];
   for (let i = 0; i < 9; i++) {
@@ -437,32 +508,21 @@ export function buildCountry(scene) {
   }
 
   // ---- the day: the sun crosses the sky, clouds come and go ----------------------------------
-  const DAY = 15 * 60; // one day every fifteen minutes
+  // (the clock is shared, see sky.js, so everyone outdoors sees the same sky)
   const sunCol = new THREE.Color();
-  let cover = 0;
-  let coverTarget = 0;
-  let nextWeather = 40;
-  kit.weather = { time: 0.35, cover: 0 }; // time of day 0 (dawn) .. 1 (dusk); cloud cover 0..1
+  kit.weather = skyNow();
   kit.tick = (dt, t) => {
-    // the sun's arc
-    const day = ((t / DAY) + 0.3) % 1;
-    kit.weather.time = day;
-    const a = day * Math.PI;
+    const sky = skyNow();
+    kit.weather = sky;
+    const cover = sky.cover;
+    const a = sky.time * Math.PI;
     const elev = Math.sin(a);
     if (kit.sun) {
       kit.sun.position.set(Math.cos(a) * -40, 6 + elev * 34, 16);
       sunCol.set('#ffb070').lerp(new THREE.Color('#fff4e0'), Math.min(1, elev * 1.6));
       kit.sun.color.copy(sunCol);
+      kit.sun.intensity = (0.6 + elev * 2.2) * (1 - cover * 0.7);
     }
-    // weather drifts between clear and overcast
-    nextWeather -= dt;
-    if (nextWeather <= 0) {
-      coverTarget = r() < 0.35 ? 0.6 + r() * 0.35 : r() * 0.3;
-      nextWeather = 50 + r() * 90;
-    }
-    cover += (coverTarget - cover) * Math.min(1, dt * 0.2);
-    kit.weather.cover = cover;
-    if (kit.sun) kit.sun.intensity = (0.6 + elev * 2.2) * (1 - cover * 0.7);
     if (kit.hemi) kit.hemi.intensity = 0.7 + elev * 0.4 - cover * 0.15;
     for (const c of clouds) {
       c.position.x += dt * (0.8 + cover);
@@ -493,16 +553,10 @@ export function buildCountry(scene) {
     for (const it of kit.gatherables) {
       if (!it.mesh.visible) continue;
       it.spark.rotation.y += dt * 2;
+      if (it.flag && it.flag.visible) it.flag.children[1].rotation.y = Math.sin(t * 3 + it.stand[1]) * 0.3;
       it.spark.position.y = 1.0 + Math.sin(t * 2.5 + it.stand[0]) * 0.1;
     }
   };
 
   return kit;
-}
-
-// how the sky is, in words, for the HUD and the Master
-export function skyWords({ time, cover }) {
-  const part = time < 0.2 ? 'Morning' : time < 0.4 ? 'Late morning' : time < 0.6 ? 'Midday' : time < 0.8 ? 'Afternoon' : 'Evening';
-  const sky = cover > 0.6 ? 'overcast' : cover > 0.3 ? 'hazy sun' : 'bright sun';
-  return `${part}, ${sky}`;
 }

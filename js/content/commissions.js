@@ -259,7 +259,78 @@ export const COMMISSIONS = [
     goal: 'In the atelier, make a fine salt print with a partner: one coats and hands it over, the other exposes it.',
     check: (r) => r.paired && r.tier === 'fine',
   },
+
+  // Errands: letters that send the apprentice out into the country to
+  // gather something, then print with it. `quest.wants` lists specimens
+  // any one of which will do; markers show where they grow.
+  {
+    id: 'atkins-dulse',
+    process: 'cyanotype',
+    quest: { wants: ['dulse'], place: 'shore' },
+    from: 'Miss Anna Atkins',
+    year: 1846,
+    letter:
+      'My British Algae wants one more plate. Go down to the shore at low tide, ' +
+      'find me red dulse among the rock pools, and print it in blue as I do.',
+    goal: 'Gather red dulse at the Shore and print it as a cyanotype.',
+    check: (r) => (r.gathered || []).includes('dulse'),
+  },
+  {
+    id: 'linnean-fern',
+    process: 'lumen',
+    quest: { wants: ['ladyfern', 'hartstongue', 'bracken'], place: 'wood' },
+    from: 'A botanist of the Linnean Society',
+    year: 1850,
+    letter:
+      'We are told a fern may be drawn by the sun with hardly any chemistry ' +
+      'worth the name. Bring a frond from the Fern Wood, lay it on the paper, ' +
+      'and show the Society.',
+    goal: 'Gather a fern in the Fern Wood and lay it on lumen paper.',
+    check: (r) => (r.laid || []).some((id) => ['ladyfern', 'hartstongue', 'bracken'].includes(id)),
+  },
+  {
+    id: 'herschel-harebell',
+    process: 'anthotype',
+    quest: { wants: ['harebell'], place: 'hill' },
+    from: 'Sir John Herschel',
+    year: 1842,
+    letter:
+      'I have tried the juices of a great many flowers. The harebell I have ' +
+      'not. It grows on the hill above the old ruin; crush it and see what the ' +
+      'sun makes of it.',
+    goal: 'Gather harebells on Ruin Hill and make an anthotype in their juice.',
+    check: (r) => r.dye === 'harebell',
+  },
+  {
+    id: 'talbot-salt',
+    process: 'saltprint',
+    quest: { wants: ['salt'], place: 'shore' },
+    from: 'William Henry Fox Talbot',
+    year: 1841,
+    letter:
+      'Salt from the grocer is never quite right; there is always something in ' +
+      'it. Bring me salt from the pans by the sea and salt your paper with it ' +
+      'before the silver goes on.',
+    goal: 'Gather sea salt at the Shore and salt your paper with it.',
+    check: (r) => !!r.salted,
+  },
+  {
+    id: 'miller-willow',
+    process: 'vandyke',
+    quest: { wants: ['willow'], place: 'stream' },
+    from: "The miller's daughter",
+    year: 1897,
+    letter:
+      'Father says the willows by our wheel are the oldest in the county. ' +
+      'Would you print their leaves for him, in that warm brown, before they ' +
+      'come down for the winter?',
+    goal: 'Gather willow leaves by the Mill Stream and print them in Van Dyke brown.',
+    check: (r) => (r.gathered || []).includes('willow'),
+  },
 ];
+
+// what the open errands still want gathered
+export const errandsOpen = (fulfilled) => COMMISSIONS.filter((c) => c.quest && !fulfilled(c.id));
 
 export const commissionsFor = (processId) =>
   COMMISSIONS.filter((c) => c.process === processId);

@@ -62,6 +62,10 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     version: 0,        // bumps whenever the print on the canvas may have changed
     dye: null,         // a gathered juice for the anthotype, as [r, g, b]
     source: 'photo',   // photo | specimen (the drawer) | gathered (your satchel)
+    gathered: [],      // ids of gathered specimens printed on this sheet
+    laid: [],          // ids of gathered specimens laid on lumen paper
+    dyeId: null,       // the gathered berry or petal crushed for the juice
+    salted: false,     // salted with sea salt the apprentice gathered
   };
 
   const stageIndex = (id) => config.stages.findIndex((s) => s.id === id);
@@ -78,6 +82,10 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
       coverage: state.brush ? state.brush.coverage() : 0,
       handCoated: state.handCoated,
       handMarks: state.brush ? state.brush.marks() : 0,
+      gathered: state.gathered,
+      laid: state.laid,
+      dye: state.dyeId,
+      salted: state.salted,
     };
   }
   const verdict = () => judge(config, resultPayload());
@@ -127,6 +135,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
       state.image = off;
       state.specimen = false;
       state.source = 'photo';
+      state.gathered = [];
       begin();
     };
     img.onerror = () => emit('error', 'That image could not be read. Try another.');
@@ -138,11 +147,13 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     state.image = withSeed(state.seed, () => botanicalPlate(1600, 1200));
     state.specimen = true;
     state.source = 'specimen';
+    state.gathered = [];
     begin();
   }
 
   // A picture made of what the apprentice gathered (a plate of specimens).
-  function useCanvas(c) {
+  function useCanvas(c, ids = []) {
+    state.gathered = ids;
     state.image = c;
     state.specimen = false; // it is theirs, so it stays on their device
     state.source = 'gathered';
@@ -150,7 +161,8 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
   }
 
   // Lay shapes straight onto the sheet (gathered leaves on lumen paper).
-  function layShapes(draw) {
+  function layShapes(draw, ids = []) {
+    state.laid = ids;
     state.brush.clear();
     const c = state.brush.canvas;
     draw(c.getContext('2d'), c.width, c.height);
@@ -160,10 +172,12 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
   }
 
   // A gathered juice for the anthotype.
-  function setDye(rgb) {
+  function setDye(rgb, id = null) {
     state.dye = rgb;
+    state.dyeId = rgb ? id : null;
     if (state.gl) state.gl.set({ u_dye: rgb || [0, 0, 0] });
   }
+  const setSalted = (v) => { state.salted = !!v; };
 
   // ---- stages ------------------------------------------------------------------
   function setStage(id) {
@@ -390,7 +404,9 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     lastT = t;
     if (state.gl) {
       if (state.exposing) {
-        state.exposure = Math.min(config.maxExposure, state.exposure + config.exposureRate * dt);
+        // out in the light, the hour and the clouds set the pace
+        const light = hooks.lightRate ? hooks.lightRate() : 1;
+        state.exposure = Math.min(config.maxExposure, state.exposure + config.exposureRate * light * dt);
         emit('exposure', meter());
         tickTimer += dt;
         if (tickTimer >= 1) { tickTimer = 0; sound.tick(); }
@@ -461,7 +477,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     on(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
     stage: current,
     stageIndex,
-    loadFile, useSpecimen, useCanvas, layShapes, setDye, setStage, advance, blocker, autoApply, skip,
+    loadFile, useSpecimen, useCanvas, layShapes, setDye, setSalted, setStage, advance, blocker, autoApply, skip,
     brushBegin, brushMove, brushEnd,
     exposeOn, exposeOff, meter, reveal, adjust, setTilt,
     verdict, press, makeAnother, newPhotograph,
