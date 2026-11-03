@@ -822,3 +822,11 @@ html.motion .chapter figure img { will-change: transform; }
   color: var(--bg);
   animation: sunpulse 1.4s ease-in-out infinite;
 }
+
+/* the herbarium on the ledger page */
+.herbarium-page { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.herb-sheet { background: var(--parchment); color: var(--parchment-ink); padding: 8px 8px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); }
+.herb-sheet canvas { width: 100%; height: auto; display: block; background: #fbf7ec; }
+.herb-sheet figcaption { font-family: var(--serif); font-size: 0.95rem; margin-top: 6px; }
+.herb-sheet small { display: block; font-family: var(--sans); font-size: 0.68rem; color: #6b5f4a; }
+.herb-sheet.unknown { opacity: 0.45; }

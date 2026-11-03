@@ -15,6 +15,7 @@ uniform float u_wash;
 uniform float u_time;
 uniform float u_contrast;
 uniform float u_tone;      // -1 spinach .. 0 beetroot .. 1 turmeric
+uniform vec3  u_dye;       // a juice gathered in the country; zero means beetroot
 uniform float u_adj;
 
 ${NOISE}
@@ -23,7 +24,7 @@ ${PAPER}
 ${IMAGE_SAMPLE}
 
 vec3 dyeColor(vec2 uv) {
-  vec3 dye = vec3(0.44, 0.13, 0.22);                     // beetroot
+  vec3 dye = dot(u_dye, u_dye) > 0.0 ? u_dye : vec3(0.44, 0.13, 0.22); // gathered juice, or beetroot
   dye = mix(dye, vec3(0.66, 0.47, 0.10), max(u_tone, 0.0));  // turmeric
   dye = mix(dye, vec3(0.30, 0.38, 0.17), max(-u_tone, 0.0)); // spinach
   dye *= 0.92 + 0.16 * fbm(uv * 26.0); // juice never coats evenly

@@ -10,6 +10,7 @@ import { ledger } from '../engine/ledger.js';
 import { sound } from '../engine/sound.js';
 import { readLetters } from '../engine/letters.js';
 import { commissionsFor, PROCESSES } from '../content/commissions.js';
+import { shapes, dyes, specimenPlate, layOut } from './specimens.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STATION_OF = { upload: 'coat', info: 'coat', paint: 'coat', hold: 'expose', reveal: 'wash', result: 'result' };
@@ -133,6 +134,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       <button class="btn" data-pick>Choose a photograph</button>
       <button class="btn ghost" data-camera>Use the camera</button>
       <p class="drawer-line">No photograph at hand? <button data-specimen>Borrow a specimen from the drawer</button></p>
+      <div class="from-satchel" hidden></div>
       <p class="privacy">The photograph stays on this device. Others here see only a blank sheet in your hands.</p>
       <input type="file" accept="image/*" hidden data-file>
       <input type="file" accept="image/*" capture="environment" hidden data-capture>
@@ -194,6 +196,49 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   el('[data-skip]').addEventListener('click', () => core.skip());
   el('[data-step-back]').addEventListener('click', () => close_());
 
+  // ---- the satchel at the bench --------------------------------------------------------
+  const CAMERA = ['daguerreotype', 'tintype']; // these take pictures, not photograms
+  function fillSatchelCard() {
+    const box = el('.from-satchel');
+    box.innerHTML = '';
+    const sh = shapes();
+    const dy = config.id === 'anthotype' ? dyes() : [];
+    const photogram = !CAMERA.includes(config.id) && sh.length;
+    box.hidden = !photogram && !dy.length;
+    if (box.hidden) return;
+    const head = document.createElement('p');
+    head.className = 'card-sub';
+    head.textContent = 'From your satchel';
+    box.append(head);
+    if (photogram) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = `Print what you gathered (${sh.length} kind${sh.length === 1 ? '' : 's'})`;
+      b.title = sh.map((x) => x.name).join(', ');
+      b.addEventListener('click', () => core.useCanvas(specimenPlate(sh, 1600, 1200, Date.now() % 9973)));
+      box.append(b);
+    }
+    if (dy.length) {
+      const row = document.createElement('div');
+      row.className = 'dye-row';
+      const label = document.createElement('span');
+      label.textContent = 'Crush for the juice:';
+      row.append(label);
+      for (const d of dy) {
+        const b = document.createElement('button');
+        b.className = 'dye' + (state.dye === d.dye ? ' on' : '');
+        b.style.setProperty('--dye', `rgb(${d.dye.map((v) => Math.round(v * 255)).join(',')})`);
+        b.textContent = d.name;
+        b.addEventListener('click', () => {
+          core.setDye(state.dye === d.dye ? null : d.dye);
+          row.querySelectorAll('.dye').forEach((x) => x.classList.toggle('on', x === b && !!state.dye));
+        });
+        row.append(b);
+      }
+      box.append(row);
+    }
+  }
+
   // ---- stages ----------------------------------------------------------------------
   let captionOverride = null;
   core.on('stage', (stage, type) => {
@@ -215,6 +260,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     });
     el('.step-count').textContent = `Step ${idx + 1} of ${config.stages.length} · ${stage.title}`;
     card.hidden = type !== 'upload';
+    if (type === 'upload') fillSatchelCard();
     if (captionOverride && type === 'hold') {
       captionEl.innerHTML = captionOverride + stage.caption;
       captionOverride = null;
@@ -255,6 +301,13 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       addButton(stage.next, next);
     } else if (type === 'paint') {
       addButton(stage.autoLabel || 'Coat for me', () => core.autoApply(), 'ghost');
+      // lumen paper: lay what you gathered straight onto it
+      if (config.brushMode === 'leaf' && shapes().length) {
+        addButton('Lay your specimens', () => {
+          core.layShapes((ctx, w, h) => layOut(ctx, w, h, shapes(), { seed: Date.now() % 9973, margin: 0.12 }));
+          captionEl.innerHTML = 'Your gathered leaves and fronds lie on the paper, pressed flat under glass.';
+        }, 'ghost');
+      }
       if (core.canHandOff()) addButton('Hand it to a partner', () => choosePartner(stage), 'ghost');
       addButton(stage.next, next);
     } else if (type === 'hold') {

@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { makeKit, PALETTE, mat, rand, textSign } from './world.js';
+import { SPECIMENS } from './specimens.js';
 
 const SIZE = 38; // walkable half-size
 
@@ -309,6 +310,92 @@ export function buildCountry(scene) {
     scene.add(o);
   }
 
+  // ---- things to gather, each with a small sparkle over it ---------------------------------
+  const sx = (z, d) => streamX(z) + d;
+  const SPOTS = {
+    poppy: [[-14, 6], [-20, 12], [-11, 11]],
+    cornflower: [[-19, 6], [-15, 13.5], [-23.5, 8.5]],
+    daisy: [[-12.5, 4], [-21, 15.5], [-16.5, 9.5]],
+    elderberry: [[-23.4, 11.8], [-20.4, 3.8]],
+    blackberry: [[-11.4, 14.8], [-10.6, 3.6]],
+    ladyfern: [[-17, -18], [-23, -25], [-15, -26]],
+    hartstongue: [[-21, -17], [-26, -21]],
+    oak: [[-14, -21], [-24, -28]],
+    ivy: [[-19, -29], [-12, -24]],
+    willow: [[sx(10, 2.1), 10], [sx(-14, -2.1), -14]],
+    mint: [[sx(4, -1.9), 4], [sx(-20, 1.9), -20]],
+    bladderwrack: [[30.6, 8], [29, -0.5], [31, 17.5]],
+    dulse: [[31.6, 13.5], [30.2, 24]],
+    salt: [[30.6, 27.3]],
+    bracken: [[16, -20], [24.2, -20], [16.6, -28]],
+    harebell: [[22.4, -21.6], [18, -21.2]],
+  };
+  const sparkleMat = new THREE.MeshBasicMaterial({ color: '#ffe08a' });
+  kit.gatherables = [];
+  for (const sp of SPECIMENS) {
+    for (const [x, z] of SPOTS[sp.id] || []) {
+      const y = ground(x, z);
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      g.rotation.y = r() * Math.PI * 2;
+      scene.add(g);
+      const c = mat(sp.color, { side: THREE.DoubleSide });
+      if (sp.shape === 'flower') {
+        for (let k = 0; k < 3; k++) {
+          const stem = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.42, 0.025), mat('#4c7a3a'));
+          stem.position.set((k - 1) * 0.12, 0.21, (k % 2) * 0.1);
+          g.add(stem);
+          const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), c);
+          bloom.position.set((k - 1) * 0.12, 0.44, (k % 2) * 0.1);
+          g.add(bloom);
+        }
+      } else if (sp.shape === 'fern') {
+        for (let k = 0; k < 7; k++) {
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 1.0), c);
+          f.position.y = 0.32;
+          f.rotation.set(-0.85, (k / 7) * Math.PI * 2, 0, 'YXZ');
+          f.translateY(0.33);
+          g.add(f);
+        }
+      } else if (sp.shape === 'weed') {
+        for (let k = 0; k < 6; k++) {
+          const w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.14), c);
+          w.position.set((r() - 0.5) * 0.5, 0.22, (r() - 0.5) * 0.5);
+          w.rotation.z = (r() - 0.5) * 0.9;
+          g.add(w);
+        }
+      } else if (!sp.shape && sp.dye) {
+        // berries on a low twig
+        const twig = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35, 0), mat('#4f7a34'));
+        twig.position.y = 0.3;
+        g.add(twig);
+        for (let k = 0; k < 9; k++) {
+          const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), c);
+          b.position.set((r() - 0.5) * 0.5, 0.25 + r() * 0.35, (r() - 0.5) * 0.5);
+          g.add(b);
+        }
+      } else if (sp.id === 'salt') {
+        kit.box(0.7, 0.05, 0.5, '#a5937a', 0, 0.03, 0, g);
+        for (let k = 0; k < 8; k++) kit.box(0.08, 0.06, 0.08, '#ffffff', (r() - 0.5) * 0.5, 0.08, (r() - 0.5) * 0.35, g);
+      } else {
+        // leafy sprigs
+        for (let k = 0; k < 6; k++) {
+          const leaf = new THREE.Mesh(new THREE.PlaneGeometry(sp.shape === 'narrow' ? 0.08 : 0.2, sp.shape === 'strap' ? 0.55 : 0.3), c);
+          leaf.position.y = 0.2;
+          leaf.rotation.set(-0.7, (k / 6) * Math.PI * 2, 0, 'YXZ');
+          leaf.translateY(0.18);
+          g.add(leaf);
+        }
+      }
+      const spark = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), sparkleMat);
+      spark.position.y = 1.0;
+      g.add(spark);
+      const it = { kind: 'gather', id: sp.id, label: `Gather: ${sp.name.toLowerCase()}`, stand: [x + 0.7, z + 0.4], face: 0, mesh: g, spark };
+      kit.gatherables.push(it);
+      kit.interactables.push(it);
+    }
+  }
+
   // ---- life: clouds, birds and butterflies ----------------------------------------------------
   const clouds = [];
   for (let i = 0; i < 9; i++) {
@@ -403,6 +490,11 @@ export function buildCountry(scene) {
       f.children[1].rotation.y = -flap;
     }
     if (kit.wheel) kit.wheel.rotation.x -= dt * 0.6;
+    for (const it of kit.gatherables) {
+      if (!it.mesh.visible) continue;
+      it.spark.rotation.y += dt * 2;
+      it.spark.position.y = 1.0 + Math.sin(t * 2.5 + it.stand[0]) * 0.1;
+    }
   };
 
   return kit;

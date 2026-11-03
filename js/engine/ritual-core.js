@@ -60,6 +60,8 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     strokes: [],       // hand coating as normalised [x, y, newStroke] triples; null once the studio coats
     partner: null,     // { id, name } of the apprentice who coated this sheet
     version: 0,        // bumps whenever the print on the canvas may have changed
+    dye: null,         // a gathered juice for the anthotype, as [r, g, b]
+    source: 'photo',   // photo | specimen (the drawer) | gathered (your satchel)
   };
 
   const stageIndex = (id) => config.stages.findIndex((s) => s.id === id);
@@ -102,6 +104,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
       u_contrast: 1,
       u_tone: 0,
       u_tilt: 0,
+      u_dye: state.dye || [0, 0, 0],
     });
     Object.assign(state, {
       exposure: 0, wash: 0, tilt: 0, adj: 1, contrast: 1, tone: 0,
@@ -123,6 +126,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
       off.getContext('2d').drawImage(img, 0, 0, off.width, off.height);
       state.image = off;
       state.specimen = false;
+      state.source = 'photo';
       begin();
     };
     img.onerror = () => emit('error', 'That image could not be read. Try another.');
@@ -133,7 +137,32 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     state.seed = Math.floor(Math.random() * 2147483646);
     state.image = withSeed(state.seed, () => botanicalPlate(1600, 1200));
     state.specimen = true;
+    state.source = 'specimen';
     begin();
+  }
+
+  // A picture made of what the apprentice gathered (a plate of specimens).
+  function useCanvas(c) {
+    state.image = c;
+    state.specimen = false; // it is theirs, so it stays on their device
+    state.source = 'gathered';
+    begin();
+  }
+
+  // Lay shapes straight onto the sheet (gathered leaves on lumen paper).
+  function layShapes(draw) {
+    state.brush.clear();
+    const c = state.brush.canvas;
+    draw(c.getContext('2d'), c.width, c.height);
+    state.handCoated = true;
+    state.strokes = null;
+    state.maskDirty = true;
+  }
+
+  // A gathered juice for the anthotype.
+  function setDye(rgb) {
+    state.dye = rgb;
+    if (state.gl) state.gl.set({ u_dye: rgb || [0, 0, 0] });
   }
 
   // ---- stages ------------------------------------------------------------------
@@ -432,7 +461,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
     on(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
     stage: current,
     stageIndex,
-    loadFile, useSpecimen, setStage, advance, blocker, autoApply, skip,
+    loadFile, useSpecimen, useCanvas, layShapes, setDye, setStage, advance, blocker, autoApply, skip,
     brushBegin, brushMove, brushEnd,
     exposeOn, exposeOff, meter, reveal, adjust, setTilt,
     verdict, press, makeAnother, newPhotograph,

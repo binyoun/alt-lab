@@ -8,7 +8,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { BENCHES } from './world.js';
 import { buildStreet, doorOf } from './street.js';
 import { buildAtelier, STATIONS } from './ateliers.js';
-import { buildCountry, skyWords } from './country.js';
+import { buildCountry, skyWords, PLACES } from './country.js';
+import { SPECIMENS, satchel, gather, drawShape } from './specimens.js';
 import { openBench as openInWorldBench, ACTIVITY_OF } from './bench.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
@@ -699,6 +700,7 @@ function interact(it) {
   player.r = it.face + Math.PI;
   if (it.kind === 'bench') openBench(it.id);
   else if (it.kind === 'history') openPage(`history/#ch-${it.id}`);
+  else if (it.kind === 'gather') pick(it);
   else if (it.kind === 'exit') {
     if (it.id === 'street') go('street', here.id);
     else if (it.id === 'country') go('country', 'street');
@@ -719,6 +721,7 @@ addEventListener('keydown', (e) => {
       document.querySelector('.bench-strip .letters-overlay').hidden = true;
     } else if (bench) bench.close();
     else if (overlayOpen === 'map') closeMap();
+    else if (overlayOpen === 'satchel') closeSatchel();
     else closeOverlay();
     chatInput.blur();
     return;
@@ -728,6 +731,7 @@ addEventListener('keydown', (e) => {
   if ((k === 'e' || k === 'enter') && nearest) { interact(nearest); return; }
   if (k === 't' || k === 'enter') { e.preventDefault(); chatInput.focus(); return; }
   if (k === 'm') { openMap(); return; }
+  if (k === 'b') { openSatchel(); return; }
   keys.add(k);
   if (k.startsWith('arrow')) e.preventDefault();
 });
@@ -781,6 +785,7 @@ function tap(cx, cy) {
   for (const h of ray.intersectObjects(targets, true)) {
     if (h.object.userData.lineItem) { showPrint(h.object.userData.lineItem); return; }
     const it = k.interactables.find((i) => isChild(h.object, i.mesh));
+    if (it && it.kind === 'gather' && !it.mesh.visible) continue;
     if (it) { walkTo(it.stand[0], it.stand[1], it); return; }
     if (isChild(h.object, k.ground)) { walkTo(h.point.x, h.point.z, null); showTarget(h.point.x, h.point.z); return; }
   }
@@ -992,6 +997,7 @@ function findNearest() {
   let best = null;
   let bd = 1.6;
   for (const it of here.kit.interactables) {
+    if (it.kind === 'gather' && !it.mesh.visible) continue;
     const d = Math.hypot(it.stand[0] - player.x, it.stand[1] - player.z);
     if (d < bd) { bd = d; best = it; }
   }
@@ -1037,6 +1043,63 @@ function animateRings(dt, t) {
     if (!rings.targetT || !player.path.length) rings.target.visible = rings.targetT > 0;
   }
 }
+
+// ---- gathering, and the satchel ----------------------------------------------
+function pick(it) {
+  const sp = SPECIMENS.find((x) => x.id === it.id);
+  const { count, first } = gather(it.id);
+  it.mesh.visible = false; // back next time you come out
+  nearest = null;
+  promptBtn.hidden = true;
+  sound.flip();
+  toast(first ? `New for your herbarium: ${sp.name}. ${sp.note}` : `Gathered ${sp.name.toLowerCase()} (${count} in your satchel).`);
+  refreshSatchel();
+}
+function refreshSatchel() {
+  const n = Object.values(satchel().items).reduce((a, b) => a + b, 0);
+  $('.satchel-count').textContent = n;
+}
+refreshSatchel();
+function openSatchel() {
+  if (!entered || bench || (overlayOpen && overlayOpen !== 'satchel')) return;
+  const { items, found } = satchel();
+  const box = $('.herbarium');
+  box.innerHTML = '';
+  for (const sp of SPECIMENS) {
+    const has = !!found[sp.id];
+    const card = document.createElement('div');
+    card.className = 'herb' + (has ? '' : ' unknown');
+    const c = document.createElement('canvas');
+    c.width = 120;
+    c.height = 90;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = has ? sp.color : '#c9bea4';
+    ctx.strokeStyle = ctx.fillStyle;
+    if (sp.shape) drawShape(ctx, sp.shape, 60, 45, 80, -0.3);
+    else {
+      for (let k = 0; k < 9; k++) {
+        ctx.beginPath();
+        ctx.arc(30 + (k % 3) * 28 + (k > 2 ? 6 : 0), 22 + Math.floor(k / 3) * 22, sp.id === 'salt' ? 6 : 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    const text = document.createElement('div');
+    text.innerHTML = has
+      ? `<b>${sp.name}</b><small>${PLACES[sp.place].name} · ${items[sp.id] || 0} carried</small><p>${sp.note}</p>`
+      : `<b>Not yet found</b><small>somewhere in ${PLACES[sp.place].name.replace(/^The /, 'the ')}</small>`;
+    card.append(c, text);
+    box.append(card);
+  }
+  $('.satchel-overlay').hidden = false;
+  overlayOpen = 'satchel';
+}
+function closeSatchel() {
+  $('.satchel-overlay').hidden = true;
+  if (overlayOpen === 'satchel') overlayOpen = null;
+}
+$('[data-satchel]').addEventListener('click', openSatchel);
+$('[data-satchel-close]').addEventListener('click', closeSatchel);
+$('.satchel-overlay').addEventListener('click', (e) => { if (e.target.classList.contains('satchel-overlay')) closeSatchel(); });
 
 // ---- the map: every house on the square, one tap away ------------------------
 const MAP_ORDER = {
