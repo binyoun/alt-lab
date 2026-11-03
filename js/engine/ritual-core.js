@@ -415,7 +415,7 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
         state.wash = Math.min(1, state.wash + dt / 2.6);
         if (state.wash >= 1) {
           state.washing = false;
-          setStage(config.stages[config.stages.length - 1].id);
+          setStage(config.stages[stageIndex(state.stage) + 1].id); // usually the result; in the field, fixing first
         }
       }
       if (state.maskDirty) {

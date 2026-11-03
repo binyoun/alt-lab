@@ -24,8 +24,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   // field: { image, rateScale, wetSeconds, notes() } for the wet-plate camera in the country
   // stations in the sun print at the pace of the sky; lamps and cameras do not
   const sunlit = stations.expose.shaft !== false || stations.expose.sky;
-  const scale = field ? field.rateScale : 1;
-  const core = createRitual(config, { maxCanvas: 1024, hooks: { ...hooks, lightRate: () => (sunlit ? lightFactor(skyNow()) : 1) * scale } });
+  const core = createRitual(config, { maxCanvas: 1024, hooks: { ...hooks, lightRate: () => (sunlit ? lightFactor(skyNow()) : 1) * (field ? field.rateScale : 1) } });
   const { state } = core;
 
   // ---- the sheet ------------------------------------------------------------
@@ -273,6 +272,59 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     }
   }
 
+  // ---- fuming a daguerreotype plate over iodine, judged by its colour ----------------------
+  // silver, straw, gold, rose, violet, blue: stop at rose-gold
+  const FUME = [[0, '#c8ccd2'], [0.2, '#d9cf9a'], [0.4, '#d8b05a'], [0.6, '#c98a7a'], [0.78, '#8a6aa8'], [1, '#4a62a8']];
+  const fumeColour = (f) => {
+    for (let i = 1; i < FUME.length; i++) {
+      if (f <= FUME[i][0]) {
+        const a = new THREE.Color(FUME[i - 1][1]);
+        return a.lerp(new THREE.Color(FUME[i][1]), (f - FUME[i - 1][0]) / (FUME[i][0] - FUME[i - 1][0]));
+      }
+    }
+    return new THREE.Color(FUME[FUME.length - 1][1]);
+  };
+  const fumeWord = (f) => (f < 0.15 ? 'bright silver' : f < 0.35 ? 'pale straw' : f < 0.5 ? 'gold' : f < 0.7 ? 'rose-gold' : f < 0.86 ? 'violet' : 'blue');
+  let fume = 0;
+  let fuming = false;
+  function fumeControls(stage) {
+    const hold = addButton('Fume over iodine', () => {}, 'hold');
+    const chip = document.createElement('span');
+    chip.className = 'fume-chip';
+    const label = document.createElement('span');
+    label.className = 'meter-label';
+    controlsEl.append(chip, label);
+    const show = () => {
+      chip.style.background = '#' + fumeColour(fume).getHexString();
+      label.textContent = `The plate is ${fumeWord(fume)}`;
+    };
+    show();
+    fumeUi = show;
+    hold.addEventListener('pointerdown', (e) => { e.preventDefault(); hold.setPointerCapture(e.pointerId); fuming = true; hold.classList.add('exposing'); });
+    const stop = () => { fuming = false; hold.classList.remove('exposing'); };
+    hold.addEventListener('pointerup', stop);
+    hold.addEventListener('pointercancel', stop);
+    hold.addEventListener('contextmenu', (e) => e.preventDefault());
+    addButton(stage.next, () => {
+      if (fume < 0.15) { captionEl.innerHTML = 'The plate is still bright silver: nothing has taken the iodine yet. Hold it over the box a while.'; return; }
+      // how well it was fumed sets how it takes the light
+      if (fume < 0.45) { field.rateScale *= 0.45; field.fumeNote = 'The plate was fumed only to straw; it barely knew the light was there.'; }
+      else if (fume <= 0.72) { field.fumeNote = 'Fumed to a true rose-gold. Daguerre would have nodded.'; }
+      else { field.rateScale *= 1.2; field.fumeNote = 'You fumed it to violet; the plate fogged before it ever saw the view.'; foggy = true; }
+      sheetMat.color.set('#ffffff');
+      fumeUi = null;
+      next();
+    });
+  }
+  let fumeUi = null;
+  let foggy = false;
+  function tickFume(dt) {
+    if (!fuming) return;
+    fume = Math.min(1, fume + dt * 0.11);
+    sheetMat.color.copy(fumeColour(fume));
+    if (fumeUi) fumeUi();
+  }
+
   // ---- the wet plate's clock: from the silver bath to the developer ------------------------
   let wetLeft = null;
   let dried = false;
@@ -327,6 +379,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       captionOverride = null;
     } else captionEl.innerHTML = type === 'upload' ? '' : stage.caption;
     if (type === 'hold' && sunlit) captionEl.innerHTML += `<span class="sky-note">${lightWords(skyNow())}.</span>`;
+    if (type === 'result' && foggy) { core.adjust({ contrast: 0.72 }); foggy = false; }
     el('.skip').hidden = type === 'upload' || type === 'result' || !!field;
     noteEl.hidden = type !== 'result';
     if (type !== 'result') fulfilledEl.hidden = true;
@@ -359,7 +412,9 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   function buildControls(type, stage) {
     controlsEl.innerHTML = '';
     meterFill = meterLabel = null;
-    if (type === 'info') {
+    if (type === 'info' && stage.fume) {
+      fumeControls(stage);
+    } else if (type === 'info') {
       addButton(stage.next, next);
     } else if (type === 'paint') {
       addButton(stage.autoLabel || 'Coat for me', () => core.autoApply(), 'ghost');
@@ -408,6 +463,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       const showVerdict = () => {
         const extra = [];
         if (field && dried) extra.push('And the collodion dried before you developed it; see the streaks and the fog.');
+        if (field && field.fumeNote) extra.push(field.fumeNote);
         if (field && field.notes) extra.push(...field.notes());
         noteEl.innerHTML = `<span class="master-says">The Master looks it over.</span> ${core.verdict().remark}${extra.length ? ' ' + extra.join(' ') : ''}`;
         noteEl.hidden = false;
@@ -662,6 +718,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     }
     fx(dt);
     tickWet(dt);
+    tickFume(dt);
   }
 
   let fxT = 0;

@@ -1064,7 +1064,7 @@ function animateRings(dt, t) {
 // carries the composed view into the wet-plate ritual at the tent.
 let viewShot = null; // { pos, look, place, it } while under the dark cloth
 const viewAim = { yaw: 0, pitch: 0 };
-const field = { focus: 0.15, stop: 11, loupe: false };
+const field = { focus: 0.15, stop: 11, loupe: false, process: 'wet' };
 const STOPS = { 8: { dof: 1, glass: 0.85 }, 11: { dof: 1.45, glass: 0.7 }, 16: { dof: 2.1, glass: 0.55 }, 22: { dof: 3.0, glass: 0.42 } };
 const focusDist = (v) => 1.5 * Math.pow(60 / 1.5, v); // the knob, from 1.5 m to 60 m
 function subjectDist() {
@@ -1083,6 +1083,7 @@ function groundGlass() {
   sharp.textContent = b < 1.0 ? 'Sharp' : b < 3 ? 'Nearly' : 'Soft';
   sharp.className = 'vf-sharp ' + (b < 1.0 ? 'ok' : b < 3 ? 'near' : 'off');
   document.querySelectorAll('.vf-stops [data-stop]').forEach((x) => x.classList.toggle('on', +x.dataset.stop === field.stop));
+  document.querySelectorAll('.vf-process [data-process]').forEach((x) => x.classList.toggle('on', x.dataset.process === field.process));
   $('[data-vf-loupe]').classList.toggle('on', field.loupe);
 }
 function openViewfinder(it) {
@@ -1121,6 +1122,7 @@ function aimedView() {
 $('[data-vf-focus]').addEventListener('input', (e) => { field.focus = parseFloat(e.target.value); groundGlass(); });
 document.querySelectorAll('.vf-stops [data-stop]').forEach((b) => b.addEventListener('click', () => { field.stop = +b.dataset.stop; groundGlass(); }));
 $('[data-vf-loupe]').addEventListener('click', () => { field.loupe = !field.loupe; groundGlass(); });
+document.querySelectorAll('.vf-process [data-process]').forEach((b) => b.addEventListener('click', () => { field.process = b.dataset.process; groundGlass(); }));
 $('[data-vf-back]').addEventListener('click', () => closeViewfinder());
 $('[data-vf-plate]').addEventListener('click', () => { captureNext = true; });
 
@@ -1148,9 +1150,10 @@ async function startPlate(image) {
   const off = blurPx();
   const where = viewShot.place;
   closeViewfinder(true);
+  const sky = skyWords(skyNow()).toLowerCase();
+  if (field.process === 'dag') { startDaguerreotype(image, stop, off, where, sky); return; }
   const base = (await import('../processes/tintype.js')).default;
   const [sitter, pour, expose, develop, result] = base.stages;
-  const sky = skyWords(skyNow()).toLowerCase();
   const config = {
     ...base,
     name: 'Wet plate',
@@ -1173,6 +1176,56 @@ async function startPlate(image) {
       { ...result, shaderStage: 4 },
     ],
   };
+  openFieldBench(config, where, {
+    image,
+    rateScale: Math.pow(8 / stop, 2) * 1.6, // a small stop drinks the light slowly
+    wetSeconds: 100,
+    notes: () => [focusNote(off)],
+  });
+  void it;
+}
+
+const focusNote = (off) => (off < 1.0 ? 'And it is sharp where it matters.' : off < 3 ? 'Nearly sharp; another turn of the knob would have done it.' : 'Soft all over: you focused somewhere else entirely.');
+
+// The daguerreotype in the field: polish, fume to rose-gold, a long exposure,
+// develop over warm mercury, then fix and gild. No clock, but the colour.
+async function startDaguerreotype(image, stop, off, where, sky) {
+  const base = (await import('../processes/daguerreotype.js')).default;
+  const [sitter, polish, expose, develop, result] = base.stages;
+  const config = {
+    ...base,
+    name: 'Daguerreotype',
+    stages: [
+      { ...sitter, shaderStage: 0 },
+      { ...polish, shaderStage: 1,
+        caption: 'In the tent: buff the silvered plate with rouge and the buckskin until it is a black mirror. Every scratch will show.',
+        next: 'Over the iodine' },
+      { id: 'fume', type: 'info', fume: true, title: 'Fume', shaderStage: 1,
+        caption: 'Hold the plate face down over the iodine box and watch its colour turn: silver, straw, gold, then rose. Stop at rose-gold. Too little and it will not see; too much and it fogs.',
+        next: 'Load the holder' },
+      { id: 'load', type: 'info', title: 'Holder', station: 'expose', shaderStage: 1,
+        caption: `At the camera: the plate goes into the holder in the dark, the holder into the camera, and the slide comes out. Your stop is f/${stop}; the sky is ${sky}. A daguerreotype wants patience.`,
+        next: 'Ready to expose' },
+      { ...expose, shaderStage: 2, holdLabel: 'Lens cap off',
+        caption: 'Take the cap off and count, long. Nothing shows on the plate yet; the image is there, unseen, until the mercury finds it.',
+        next: 'Cap on, back to the tent' },
+      { ...develop, shaderStage: 3, title: 'Mercury',
+        caption: 'In the tent: the plate goes face down over the mercury box, warmed by its spirit lamp. The vapour finds the exposed silver and the picture rises like frost.' },
+      { id: 'gild', type: 'info', title: 'Fix and gild', station: 'wash', shaderStage: 4,
+        caption: 'Wash away the unexposed iodide in hypo, then warm a film of gold chloride over the plate to deepen and protect it.',
+        next: 'Look at the plate' },
+      { ...result, shaderStage: 4 },
+    ],
+  };
+  const f = {
+    image,
+    rateScale: Math.pow(8 / stop, 2) * 0.9, // slower than collodion, even with bromine
+    notes: () => [focusNote(off)],
+  };
+  openFieldBench(config, where, f);
+}
+
+function openFieldBench(config, where, fieldOpts) {
   overlayOpen = 'inworld';
   document.body.classList.add('at-bench');
   bench = openInWorldBench({
@@ -1184,14 +1237,9 @@ async function startPlate(image) {
     me: meHandle,
     walkTo: (x, z, then) => walkTo(x, z, then),
     setActivity: (a) => { player.activity = a || ''; },
-    hooks: { ...benchHooks('tintype'), onPress: (p) => { pressed(p, false); } },
+    hooks: { ...benchHooks(config.id), onPress: (p) => { pressed(p, false); } },
     placeName: where,
-    field: {
-      image,
-      rateScale: Math.pow(8 / stop, 2) * 1.6, // a small stop drinks the light slowly
-      wetSeconds: 100,
-      notes: () => [off < 1.0 ? 'And it is sharp where it matters.' : off < 3 ? 'Nearly sharp; another turn of the knob would have done it.' : 'Soft all over: you focused somewhere else entirely.'],
-    },
+    field: fieldOpts,
     onClose: () => {
       bench = null;
       overlayOpen = null;
@@ -1203,7 +1251,6 @@ async function startPlate(image) {
       canvas.focus();
     },
   });
-  void it;
 }
 
 // ---- gathering, and the satchel ----------------------------------------------
