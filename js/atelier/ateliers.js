@@ -408,10 +408,10 @@ const STYLES = {
 // `lamp` is a light that comes up while exposing (indoors, at the subject);
 // `shaft: false` leaves out the shaft of sunlight.
 
-const fwd = (f) => [-Math.sin(f), -Math.cos(f)];
+export const fwd = (f) => [-Math.sin(f), -Math.cos(f)];
 
 // a sheet lying flat on a surface at (x, y, z), worked from the `face` side
-function flat(x, z, y, face, extra = {}) {
+export function flat(x, z, y, face, extra = {}) {
   const [fx, fz] = fwd(face);
   const sx = x - fx * 1.0;
   const sz = z - fz * 1.0;
@@ -424,7 +424,7 @@ function flat(x, z, y, face, extra = {}) {
 }
 
 // a plate standing upright at the back of a camera at (x, z), lens toward `face`
-function inCamera(x, z, face, extra = {}) {
+export function inCamera(x, z, face, extra = {}) {
   const [fx, fz] = fwd(face);
   const bx = x - fx * 0.3;
   const bz = z - fz * 0.3;
@@ -442,7 +442,7 @@ function inCamera(x, z, face, extra = {}) {
 }
 
 // the finished print held up to look at, where you stand at `st`
-function held(st) {
+export function held(st) {
   const [fx, fz] = fwd(st.face);
   const [sx, sz] = st.stand;
   return {

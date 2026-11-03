@@ -595,3 +595,36 @@ body.at-bench .hud, body.at-bench .prompt { display: none; }
 .view-thumb img { width: 84px; height: 63px; object-fit: cover; display: block; }
 .view-thumb small { font-size: 0.65rem; color: #6b5f4a; }
 .view-thumb:hover { border-color: var(--parchment-ink); }
+.wet-timer { font-family: var(--sans); font-size: 0.72rem; letter-spacing: 0.04em; color: #bfe0c0; }
+.wet-timer.urgent { color: #ff9a8a; }
+
+/* ---- under the dark cloth ------------------------------------------------------ */
+body.ground-glass #labels { visibility: hidden; }
+body.ground-glass #world { transition: transform 0.35s ease, filter 0.2s linear; }
+@media (prefers-reduced-motion: reduce) { body.ground-glass #world { transition: none; } }
+body.ground-glass .vf-glass { box-shadow: 0 0 0 100vmax rgba(8, 7, 5, 0.92); background: radial-gradient(ellipse at center, transparent 45%, rgba(20, 16, 10, 0.55)); }
+.vf-head {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+.vf-head .vf-title { font-family: var(--serif); font-size: 1.3rem; color: var(--parchment); }
+.vf-head .vf-hint { font-family: var(--prose); font-style: italic; color: var(--ink-dim); }
+.vf-focus { display: flex; align-items: center; gap: 8px; font-family: var(--serif); color: var(--parchment); }
+.vf-focus small { font-family: var(--sans); font-size: 0.68rem; color: var(--ink-dim); }
+.vf-focus input { width: min(260px, 50vw); }
+.vf-sharp { font-family: var(--sans); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border: 1px solid var(--line); }
+.vf-sharp.ok { color: #bfe0c0; border-color: #6a8a6a; }
+.vf-sharp.near { color: #f0d79a; }
+.vf-sharp.off { color: #ff9a8a; }
+.vf-stops { display: inline-flex; border: 1px solid rgba(233, 226, 208, 0.35); }
+.vf-stops button { font-family: var(--serif); font-style: italic; font-size: 0.95rem; color: var(--parchment); background: rgba(16, 14, 10, 0.8); border: 0; border-right: 1px solid var(--line); padding: 5px 10px; cursor: pointer; }
+.vf-stops button:last-child { border-right: 0; }
+.vf-stops button.on { background: var(--parchment); color: var(--parchment-ink); }
+.vf-bar .btn.on { background: var(--parchment); color: var(--parchment-ink); }

@@ -114,13 +114,24 @@
 
 <div class="viewfinder" hidden>
   <div class="vf-glass"><span class="vf-corner tl"></span><span class="vf-corner tr"></span><span class="vf-corner bl"></span><span class="vf-corner br"></span><span class="vf-cross"></span></div>
-  <div class="vf-bar">
+  <div class="vf-head">
     <span class="vf-title"></span>
-    <span class="vf-hint">Drag to aim the camera.</span>
-    <button class="btn" data-vf-expose>Take the picture</button>
+    <span class="vf-hint">Under the dark cloth. On the ground glass the world is upside down and back to front; drag to aim.</span>
+  </div>
+  <div class="vf-bar">
+    <label class="vf-focus">
+      <span>Focus <small>near</small></span>
+      <input type="range" min="0" max="1" step="0.001" value="0.15" data-vf-focus aria-label="Focus, from near to far">
+      <span><small>far</small></span>
+    </label>
+    <span class="vf-sharp"></span>
+    <span class="vf-stops" role="group" aria-label="Aperture">
+      <button data-stop="8">f/8</button><button data-stop="11">f/11</button><button data-stop="16">f/16</button><button data-stop="22">f/22</button>
+    </span>
+    <button class="btn ghost" data-vf-loupe>Loupe</button>
+    <button class="btn" data-vf-plate>Prepare a plate</button>
     <button class="btn ghost" data-vf-back>Step back <kbd>Esc</kbd></button>
   </div>
-  <div class="vf-flash"></div>
 </div>
 
 <div class="toast" role="status" hidden></div>

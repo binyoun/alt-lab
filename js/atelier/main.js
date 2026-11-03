@@ -9,8 +9,8 @@ import { BENCHES } from './world.js';
 import { buildStreet, doorOf } from './street.js';
 import { buildAtelier, STATIONS } from './ateliers.js';
 import { buildCountry, skyWords, PLACES } from './country.js';
+import { skyNow } from './sky.js';
 import { SPECIMENS, satchel, gather, drawShape } from './specimens.js';
-import { keepView } from './views.js';
 import { openBench as openInWorldBench, ACTIVITY_OF } from './bench.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
@@ -1057,27 +1057,56 @@ function animateRings(dt, t) {
   }
 }
 
-// ---- the field camera: look through it, aim, take the picture --------------------
-let viewShot = null; // { pos, look, place } while looking through a field camera
+// ---- the field camera: compose, focus, choose a stop, then make a wet plate --------
+// Under the dark cloth the ground glass shows the view upside down and back to
+// front, dim at the edges. The focus knob blurs and sharpens it for real, the
+// stop trades brightness and depth against exposure time, and "Prepare a plate"
+// carries the composed view into the wet-plate ritual at the tent.
+let viewShot = null; // { pos, look, place, it } while under the dark cloth
 const viewAim = { yaw: 0, pitch: 0 };
-let captureNext = false;
+const field = { focus: 0.15, stop: 11, loupe: false };
+const STOPS = { 8: { dof: 1, glass: 0.85 }, 11: { dof: 1.45, glass: 0.7 }, 16: { dof: 2.1, glass: 0.55 }, 22: { dof: 3.0, glass: 0.42 } };
+const focusDist = (v) => 1.5 * Math.pow(60 / 1.5, v); // the knob, from 1.5 m to 60 m
+function subjectDist() {
+  return viewShot ? viewShot.look.distanceTo(viewShot.pos) : 10;
+}
+// how soft the ground glass is: the focusing error, forgiven by a small stop
+function blurPx() {
+  const err = Math.abs(1 / focusDist(field.focus) - 1 / subjectDist());
+  return Math.min(18, (err * 70) / STOPS[field.stop].dof);
+}
+function groundGlass() {
+  const b = blurPx();
+  canvas.style.filter = `blur(${b.toFixed(1)}px) brightness(${STOPS[field.stop].glass}) sepia(0.15)`;
+  canvas.style.transform = `rotate(180deg)${field.loupe ? ' scale(2.6)' : ''}`;
+  const sharp = $('.vf-sharp');
+  sharp.textContent = b < 1.0 ? 'Sharp' : b < 3 ? 'Nearly' : 'Soft';
+  sharp.className = 'vf-sharp ' + (b < 1.0 ? 'ok' : b < 3 ? 'near' : 'off');
+  document.querySelectorAll('.vf-stops [data-stop]').forEach((x) => x.classList.toggle('on', +x.dataset.stop === field.stop));
+  $('[data-vf-loupe]').classList.toggle('on', field.loupe);
+}
 function openViewfinder(it) {
   overlayOpen = 'viewfinder';
-  viewShot = { pos: new THREE.Vector3(...it.view.pos), look: new THREE.Vector3(...it.view.look), place: it.id };
+  viewShot = { pos: new THREE.Vector3(...it.view.pos), look: new THREE.Vector3(...it.view.look), place: it.id, it };
   viewAim.yaw = viewAim.pitch = 0;
+  field.loupe = false;
   player.activity = 'photographing';
-  document.body.classList.add('at-bench');
+  document.body.classList.add('at-bench', 'ground-glass');
   $('.viewfinder .vf-title').textContent = it.id;
   if (here.kit.hideMarkers) here.kit.hideMarkers(true); // a photograph shows the place, not the game
   $('.viewfinder').hidden = false;
+  $('[data-vf-focus]').value = field.focus;
   promptBtn.hidden = true;
+  groundGlass();
 }
-function closeViewfinder() {
-  if (here && here.kit.hideMarkers) here.kit.hideMarkers(false);
+function closeViewfinder(keepMarkersHidden = false) {
+  if (here && here.kit.hideMarkers && !keepMarkersHidden) here.kit.hideMarkers(false);
   viewShot = null;
   overlayOpen = null;
   player.activity = '';
-  document.body.classList.remove('at-bench');
+  document.body.classList.remove('at-bench', 'ground-glass');
+  canvas.style.filter = '';
+  canvas.style.transform = '';
   $('.viewfinder').hidden = true;
 }
 const aimed = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
@@ -1089,25 +1118,93 @@ function aimedView() {
   aimed.look.copy(viewShot.pos).add(d);
   return aimed;
 }
-// the picture is what the scene just rendered, cropped to a plate's 4:3
+$('[data-vf-focus]').addEventListener('input', (e) => { field.focus = parseFloat(e.target.value); groundGlass(); });
+document.querySelectorAll('.vf-stops [data-stop]').forEach((b) => b.addEventListener('click', () => { field.stop = +b.dataset.stop; groundGlass(); }));
+$('[data-vf-loupe]').addEventListener('click', () => { field.loupe = !field.loupe; groundGlass(); });
+$('[data-vf-back]').addEventListener('click', () => closeViewfinder());
+$('[data-vf-plate]').addEventListener('click', () => { captureNext = true; });
+
+// The scene as the lens would put it on the plate: right way up (the plate is
+// turned over to look at), cropped to 4:3, softened by however far off focus is.
+let captureNext = false;
 function capture() {
   const src = renderer.domElement;
   const out = document.createElement('canvas');
   out.width = 1024;
   out.height = 768;
+  const ctx = out.getContext('2d');
   const sw = Math.min(src.width, src.height * 4 / 3);
   const sh = sw * 3 / 4;
-  out.getContext('2d').drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, 1024, 768);
-  keepView(viewShot.place, out.toDataURL('image/jpeg', 0.82));
-  const flash = $('.vf-flash');
-  flash.classList.remove('go');
-  void flash.offsetWidth;
-  flash.classList.add('go');
-  sound.thump();
-  toast(`A view of ${viewShot.place} on a plate. Develop it at the Portrait Studio (tintype) or the Plate Room (daguerreotype).`);
+  const px = blurPx() * (out.width / canvas.clientWidth);
+  if (px > 0.4) ctx.filter = `blur(${px.toFixed(1)}px)`;
+  ctx.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, 1024, 768);
+  startPlate(out);
 }
-$('[data-vf-expose]').addEventListener('click', () => { captureNext = true; });
-$('[data-vf-back]').addEventListener('click', closeViewfinder);
+
+// The wet plate itself: the tintype chemistry, with the field's steps around it.
+async function startPlate(image) {
+  const it = viewShot.it;
+  const stop = field.stop;
+  const off = blurPx();
+  const where = viewShot.place;
+  closeViewfinder(true);
+  const base = (await import('../processes/tintype.js')).default;
+  const [sitter, pour, expose, develop, result] = base.stages;
+  const sky = skyWords(skyNow()).toLowerCase();
+  const config = {
+    ...base,
+    name: 'Wet plate',
+    stages: [
+      { ...sitter, shaderStage: 0 },
+      { ...pour, shaderStage: 1, title: 'Pour',
+        caption: 'In the tent: hold the plate level and pour collodion over it, tilting so it runs to every corner. Brush it out by hand, or pour it evenly.',
+        next: 'Into the silver bath' },
+      { id: 'bath', type: 'info', title: 'Silver bath', shaderStage: 1,
+        caption: 'Lower the plate into the silver bath. In three minutes the collodion turns creamy and takes the light. From now on it must stay wet: the clock is running.',
+        next: 'Load the holder' },
+      { id: 'load', type: 'info', title: 'Holder', station: 'expose', shaderStage: 1,
+        caption: `At the camera: slide the holder in where the ground glass was, and draw out the dark slide. The plate faces the lens, waiting behind the cap. Your stop is f/${stop}; the sky is ${sky}.`,
+        next: 'Ready to expose' },
+      { ...expose, shaderStage: 2, holdLabel: 'Lens cap off',
+        caption: `Take the cap off the lens and count. At f/${stop} ${stop >= 16 ? 'the light comes through a pinhole of a stop: count long.' : 'the lens is wide open: count short.'} Cap it again when you think it is enough.`,
+        next: 'Cap on, slide in, back to the tent' },
+      { ...develop, shaderStage: 3, title: 'Develop',
+        caption: 'In the tent, quickly: pour the developer over the plate and watch the picture come up, then fix it and wash it.' },
+      { ...result, shaderStage: 4 },
+    ],
+  };
+  overlayOpen = 'inworld';
+  document.body.classList.add('at-bench');
+  bench = openInWorldBench({
+    config,
+    stations: here.kit.fieldStations[where],
+    kit: here.kit,
+    scene: here.scene,
+    camera,
+    me: meHandle,
+    walkTo: (x, z, then) => walkTo(x, z, then),
+    setActivity: (a) => { player.activity = a || ''; },
+    hooks: { ...benchHooks('tintype'), onPress: (p) => { pressed(p, false); } },
+    placeName: where,
+    field: {
+      image,
+      rateScale: Math.pow(8 / stop, 2) * 1.6, // a small stop drinks the light slowly
+      wetSeconds: 100,
+      notes: () => [off < 1.0 ? 'And it is sharp where it matters.' : off < 3 ? 'Nearly sharp; another turn of the knob would have done it.' : 'Soft all over: you focused somewhere else entirely.'],
+    },
+    onClose: () => {
+      bench = null;
+      overlayOpen = null;
+      document.body.classList.remove('at-bench');
+      if (here.kit.hideMarkers) here.kit.hideMarkers(false);
+      me.root.visible = true;
+      player.path = [];
+      player.pending = null;
+      canvas.focus();
+    },
+  });
+  void it;
+}
 
 // ---- gathering, and the satchel ----------------------------------------------
 function pick(it) {

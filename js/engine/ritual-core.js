@@ -423,8 +423,10 @@ export function createRitual(config, { maxCanvas = 1600, hooks = {}, canvas = do
         state.maskDirty = false;
       }
       shownTilt += (state.tilt - shownTilt) * Math.min(1, dt * 6);
+      const st = current();
       state.gl.set({
-        u_stage: stageIndex(state.stage),
+        // a stage may borrow another stage's look (field steps added around the classic ones)
+        u_stage: st && st.shaderStage !== undefined ? st.shaderStage : stageIndex(state.stage),
         u_exposure: state.exposure,
         u_wash: state.wash,
         u_time: t / 1000,

@@ -9,6 +9,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { makeKit, PALETTE, mat, rand, textSign } from './world.js';
 import { SPECIMENS } from './specimens.js';
 import { skyNow } from './sky.js';
+import { flat, inCamera, held } from './ateliers.js';
 export { skyWords } from './sky.js';
 
 const SIZE = 38; // walkable half-size
@@ -399,11 +400,36 @@ export function buildCountry(scene) {
   }
 
   // ---- dark tents and field cameras, at three views worth a plate -------------------------
+  // each site: the tent, the camera and where it looks, the tent's work table
+  // (pour and sensitise), its developing tray, and which way you face at each
   const TENTS = [
-    { place: 'Ruin Hill', tent: [12.6, -14.6], cam: [14.6, -16.4], look: [20, -25.5], ry: 0.6 },
-    { place: 'The Mill Stream', tent: [0.8, 3.0], cam: [2.6, 3.6], look: [9.2, -7.5], ry: -0.4 },
-    { place: 'The Shore', tent: [23.6, 16.8], cam: [25.2, 15.2], look: [60, 6], ry: 1.2 },
+    { place: 'Ruin Hill', tent: [12.6, -14.6], cam: [14.6, -16.4], look: [20, -25.5], ry: 0.6, table: [10.6, -15.4, -Math.PI / 2], tray: [10.6, -12.6, -Math.PI / 2] },
+    { place: 'The Mill Stream', tent: [0.8, 3.0], cam: [2.6, 3.6], look: [9.2, -7.5], ry: -0.4, table: [-1.4, 4.4, -Math.PI / 2], tray: [-1.4, 1.4, -Math.PI / 2] },
+    { place: 'The Shore', tent: [23.6, 16.8], cam: [25.2, 15.2], look: [60, 6], ry: 1.2, table: [21.6, 18.4, -Math.PI / 2], tray: [21.6, 15.2, -Math.PI / 2] },
   ];
+  const workTable = (x, z, tray) => {
+    const y = ground(x, z);
+    kit.box(1.1, 0.06, 0.7, PALETTE.wood, x, y + 0.8, z);
+    for (const [dx, dz] of [[-0.48, -0.28], [0.48, -0.28], [-0.48, 0.28], [0.48, 0.28]]) kit.box(0.06, 0.8, 0.06, PALETTE.woodDark, x + dx, y + 0.4, z + dz);
+    if (tray) {
+      kit.box(0.7, 0.08, 0.5, '#2a2622', x, y + 0.87, z);
+      const l = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), mat('#6a6a52', { roughness: 0.15 }));
+      l.rotation.x = -Math.PI / 2;
+      l.position.set(x, y + 0.915, z);
+      scene.add(l);
+    } else {
+      kit.cyl(0.07, 0.07, 0.22, mat('#6a4a2a', { roughness: 0.3 }), x - 0.38, y + 0.94, z - 0.18); // collodion
+      kit.box(0.34, 0.12, 0.24, '#3a3a3a', x + 0.34, y + 0.89, z - 0.12); // the silver bath
+    }
+    kit.collide(x - 0.55, z - 0.35, x + 0.55, z + 0.35);
+  };
+  // a station's heights sit on the land, not at zero
+  const lift = (st, gy) => ({
+    ...st,
+    sheet: { ...st.sheet, pos: [st.sheet.pos[0], st.sheet.pos[1] + gy, st.sheet.pos[2]] },
+    cam: { pos: [st.cam.pos[0], st.cam.pos[1] + gy, st.cam.pos[2]], look: [st.cam.look[0], st.cam.look[1] + gy, st.cam.look[2]] },
+  });
+  kit.fieldStations = {};
   for (const t of TENTS) {
     const [tx, tz] = t.tent;
     const ty = ground(tx, tz);
@@ -433,8 +459,15 @@ export function buildCountry(scene) {
     const dx = t.look[0] - cx;
     const dz = t.look[1] - cz;
     const d = Math.hypot(dx, dz);
+    // the tent's table and tray, and the stations the wet-plate ritual walks between
+    workTable(t.table[0], t.table[1], false);
+    workTable(t.tray[0], t.tray[1], true);
+    const coat = lift(flat(t.table[0], t.table[1], 0.86, t.table[2]), ground(t.table[0], t.table[1]));
+    const wash = lift({ ...flat(t.tray[0], t.tray[1], 0.92, t.tray[2]), shaft: false, ripples: false }, ground(t.tray[0], t.tray[1]));
+    const expose = lift({ ...inCamera(cx, cz, Math.atan2(-dx, -dz)), sky: true }, cy);
+    kit.fieldStations[t.place] = { coat, expose, wash, result: lift(held(wash), ground(t.tray[0], t.tray[1])) };
     kit.interactables.push({
-      kind: 'tent', id: t.place, label: `Set up the camera: ${t.place}`,
+      kind: 'tent', id: t.place, label: `Work the camera: ${t.place}`,
       stand: [cx - (dx / d) * 0.9, cz - (dz / d) * 0.9], face: Math.atan2(-dx, -dz), mesh: g,
       // the eye sits just past the lens, so the camera's own body is not in the picture
       view: { pos: [cx + (dx / d) * 0.75, cy + 1.42, cz + (dz / d) * 0.75], look: [t.look[0], lookY, t.look[1]] },

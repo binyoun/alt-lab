@@ -20,10 +20,12 @@ export const ACTIVITY_OF = { coat: 'coating', expose: 'exposing', wash: 'washing
 
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function openBench({ config, stations, kit, scene, camera, me, walkTo, setActivity, hooks, placeName, onHang, onClose }) {
+export function openBench({ config, stations, kit, scene, camera, me, walkTo, setActivity, hooks, placeName, onHang, onClose, field = null }) {
+  // field: { image, rateScale, wetSeconds, notes() } for the wet-plate camera in the country
   // stations in the sun print at the pace of the sky; lamps and cameras do not
-  const sunlit = stations.expose.shaft !== false;
-  const core = createRitual(config, { maxCanvas: 1024, hooks: { ...hooks, lightRate: () => (sunlit ? lightFactor(skyNow()) : 1) } });
+  const sunlit = stations.expose.shaft !== false || stations.expose.sky;
+  const scale = field ? field.rateScale : 1;
+  const core = createRitual(config, { maxCanvas: 1024, hooks: { ...hooks, lightRate: () => (sunlit ? lightFactor(skyNow()) : 1) * scale } });
   const { state } = core;
 
   // ---- the sheet ------------------------------------------------------------
@@ -130,7 +132,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   strip.innerHTML = `
     <div class="bench-top">
       <button class="back-btn" data-step-back><span aria-hidden="true">&larr;</span> Back to ${esc(placeName || 'the room')} <kbd>Esc</kbd></button>
-      <div class="bench-title"><span class="bench-name">${esc(config.name)}</span><span class="step-count"></span></div>
+      <div class="bench-title"><span class="bench-name">${esc(config.name)}</span><span class="step-count"></span><span class="wet-timer" hidden></span></div>
       <button class="letters-btn" data-letters hidden></button>
     </div>
     <div class="paper-card" hidden>
@@ -271,11 +273,38 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     }
   }
 
+  // ---- the wet plate's clock: from the silver bath to the developer ------------------------
+  let wetLeft = null;
+  let dried = false;
+  const timerEl = () => el('.wet-timer');
+  function wetClock(stage) {
+    if (!field || !field.wetSeconds) return;
+    if (stage.id === 'bath' && wetLeft === null) { wetLeft = field.wetSeconds; dried = false; }
+    if (stageType(stage) === 'reveal' || stageType(stage) === 'result') {
+      if (wetLeft !== null && wetLeft <= 0) dried = true;
+      wetLeft = null;
+      timerEl().hidden = true;
+      if (dried && stageType(stage) === 'result') core.adjust({ contrast: 0.7 });
+    }
+    if (stage.id === 'pour' || stageType(stage) === 'paint') { wetLeft = null; dried = false; timerEl().hidden = true; }
+  }
+  function tickWet(dt) {
+    if (wetLeft === null) return;
+    wetLeft = Math.max(0, wetLeft - dt);
+    const t = timerEl();
+    t.hidden = false;
+    const m = Math.floor(wetLeft / 60);
+    const sec = Math.floor(wetLeft % 60);
+    t.textContent = wetLeft > 0 ? `Plate wet · ${m}:${String(sec).padStart(2, '0')} left to develop` : 'The plate has dried';
+    t.classList.toggle('urgent', wetLeft < 20);
+  }
+
   // ---- stages ----------------------------------------------------------------------
   let captionOverride = null;
   core.on('stage', (stage, type) => {
     if (type !== 'upload') showLive();
-    const where = STATION_OF[type] || 'coat';
+    const where = stage.station || STATION_OF[type] || 'coat';
+    wetClock(stage, type);
     // the controls wait until the apprentice has arrived
     strip.classList.add('moving');
     goTo(where, () => {
@@ -298,7 +327,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       captionOverride = null;
     } else captionEl.innerHTML = type === 'upload' ? '' : stage.caption;
     if (type === 'hold' && sunlit) captionEl.innerHTML += `<span class="sky-note">${lightWords(skyNow())}.</span>`;
-    el('.skip').hidden = type === 'upload' || type === 'result';
+    el('.skip').hidden = type === 'upload' || type === 'result' || !!field;
     noteEl.hidden = type !== 'result';
     if (type !== 'result') fulfilledEl.hidden = true;
     canvasCursor(type === 'paint' ? 'brush' : type === 'result' && config.tiltResult ? 'tilt' : '');
@@ -377,7 +406,10 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       });
     } else if (type === 'result') {
       const showVerdict = () => {
-        noteEl.innerHTML = `<span class="master-says">The Master looks it over.</span> ${core.verdict().remark}`;
+        const extra = [];
+        if (field && dried) extra.push('And the collodion dried before you developed it; see the streaks and the fog.');
+        if (field && field.notes) extra.push(...field.notes());
+        noteEl.innerHTML = `<span class="master-says">The Master looks it over.</span> ${core.verdict().remark}${extra.length ? ' ' + extra.join(' ') : ''}`;
         noteEl.hidden = false;
       };
       showVerdict();
@@ -629,6 +661,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       kit.hemi.intensity += (want - kit.hemi.intensity) * Math.min(1, dt * 4);
     }
     fx(dt);
+    tickWet(dt);
   }
 
   let fxT = 0;
@@ -703,6 +736,10 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     showLive();
     station = null;
     goTo('coat', () => core.applyPreset(hooks.preset));
+  } else if (field) {
+    // you begin at the camera you just composed with, and walk to the tent
+    station = 'expose';
+    goTo('coat', () => core.useCanvas(field.image, []));
   } else {
     goTo('coat', () => applyStage(config.stages[0], 'upload'));
   }
