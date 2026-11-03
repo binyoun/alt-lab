@@ -647,6 +647,10 @@ canvas.print {
   opacity: 0.85;
 }
 .letter.done { opacity: 0.82; }
+.letter-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-top: 14px; }
+.letter-nav[hidden] { display: none; }
+.letter-count { font-size: 0.78rem; letter-spacing: 0.06em; color: var(--ink-dim); }
+.letters-list, .master-letters { width: 100%; }
 
 /* Wax seals */
 .seal {

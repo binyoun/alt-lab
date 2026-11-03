@@ -8,6 +8,7 @@ import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
 import { startRitual } from '../engine/ritual.js';
 import { ledger } from '../engine/ledger.js';
+import { readLetters } from '../engine/letters.js';
 import { renderRecipe } from '../engine/sample.js';
 import { sound, mountSoundToggle } from '../engine/sound.js';
 import { PROCESSES, COMMISSIONS } from '../content/commissions.js';
@@ -515,19 +516,20 @@ function openMaster() {
     const has = ledger.hasSeal(b.id);
     return `<div class="seal-slot"><span class="seal${has ? '' : ' ghost'}" style="--seal:${PROCESSES[b.id].seal}">${b.name[0]}</span><small>${b.name}</small></div>`;
   }).join('');
-  const letters = COMMISSIONS.filter((c) => !ledger.fulfilled(c.id)).slice(0, 4).map((c) => `
-    <article class="letter">
-      <div class="letter-from">${c.from}, ${c.year}</div>
-      <div class="letter-goal">${PROCESSES[c.process].name}: ${c.goal}</div>
-    </article>`).join('');
+  const waiting = COMMISSIONS.filter((c) => !ledger.fulfilled(c.id));
   masterOverlay.querySelector('.letters-sheaf').innerHTML = `
     <article class="letter">
       <div class="letter-from">The Master</div>
       <p>${say}</p>
     </article>
     <div class="seal-row">${sealRow}</div>
-    ${letters ? '<h2>Letters still waiting</h2>' + letters : '<h2>Every letter answered</h2>'}
+    <h2>${waiting.length ? (waiting.length === 1 ? 'One letter still waits' : `${waiting.length} letters still wait`) : 'Every letter answered'}</h2>
+    <div class="master-letters"></div>
     <button class="btn ghost" data-close>Back to the studio</button>`;
+  // one letter at a time, each naming the bench it belongs to
+  readLetters(masterOverlay.querySelector('.master-letters'), waiting.map((c) => ({
+    ...c, goal: `${PROCESSES[c.process].name}: ${c.goal}`,
+  })), { onTurn: () => sound.flip() });
   masterOverlay.hidden = false;
   document.body.classList.add('in-overlay');
 }

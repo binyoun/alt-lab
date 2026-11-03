@@ -11,6 +11,7 @@ import { judge } from './judge.js';
 import { ledger } from './ledger.js';
 import { sound, mountSoundToggle } from './sound.js';
 import { commissionsFor } from '../content/commissions.js';
+import { readLetters } from './letters.js';
 import { botanicalPlate, withSeed } from './sample.js';
 
 const BRUSH_CURSOR =
@@ -193,19 +194,7 @@ export function startRitual(root, config, hooks = {}) {
 
   // ---- the letters ------------------------------------------------------
   function buildLetters() {
-    const list = el('.letters-list');
-    list.innerHTML = '';
-    for (const c of commissionsFor(config.id)) {
-      const done = ledger.fulfilled(c.id);
-      const div = document.createElement('article');
-      div.className = 'letter' + (done ? ' done' : '');
-      div.innerHTML = `
-        <div class="letter-from">${c.from}, ${c.year}</div>
-        <p>${c.letter}</p>
-        <div class="letter-goal">${c.goal}</div>
-        ${done ? '<div class="letter-stamp">Fulfilled</div>' : ''}`;
-      list.appendChild(div);
-    }
+    readLetters(el('.letters-list'), commissionsFor(config.id), { onTurn: () => sound.flip() });
     updateLettersBtn();
   }
 
