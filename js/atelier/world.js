@@ -258,7 +258,7 @@ export function makeKit(scene, bounds) {
     return l;
   };
 
-  kit.light = ({ sky = '#f3dcb4', ground = '#2b2117', ambient = 0.8, sun = '#ffd9a0', sunI = 2.0, pos = [10, 18, 8], background = '#14120e', fog = [24, 60] } = {}) => {
+  kit.light = ({ sky = '#f3dcb4', ground = '#2b2117', ambient = 0.8, sun = '#ffd9a0', sunI = 2.0, pos = [10, 18, 8], background = '#14120e', fog = [24, 60], beyond = true } = {}) => {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, fog[0], fog[1]);
     kit.hemi = new THREE.HemisphereLight(sky, ground, ambient);
@@ -278,11 +278,12 @@ export function makeKit(scene, bounds) {
       scene.add(s);
     }
     // the world beyond the walls
-    const beyond = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), mat('#16140f'));
-    beyond.rotation.x = -Math.PI / 2;
-    beyond.position.y = -0.03;
-    beyond.receiveShadow = true;
-    scene.add(beyond);
+    if (!beyond) return;
+    const under = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), mat('#16140f'));
+    under.rotation.x = -Math.PI / 2;
+    under.position.y = -0.03;
+    under.receiveShadow = true;
+    scene.add(under);
   };
 
   // A picture the simulator made, framed on a wall

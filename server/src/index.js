@@ -136,8 +136,8 @@ export class Atelier {
     if (m.t === 'pos') {
       if (now - (a.lastPos || 0) < 150) return;
       a.lastPos = now;
-      a.x = num(m.x, -24, 24);
-      a.z = num(m.z, -9, 9);
+      a.x = num(m.x, -60, 60); // the country is wider than the square
+      a.z = num(m.z, -60, 60);
       a.r = num(m.r, -100, 100);
       a.a = typeof m.a === 'string' && /^[a-z0-9-]{0,24}$/.test(m.a) ? m.a : ''; // what they are at: a bench, a room
       ws.serializeAttachment(a);

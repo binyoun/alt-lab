@@ -46,6 +46,7 @@ export function doorOf(id) {
   if (i >= 0) return { x: XS[i] - 1.6, z: FRONT - 0.1, face: Math.PI };
   if (id === WEST) return { x: -SIDE + 0.1, z: -1.6, face: Math.PI / 2 };
   if (id === EAST) return { x: SIDE - 0.1, z: 1.6, face: -Math.PI / 2 };
+  if (id === 'country') return { x: 21.3, z: 8.6, face: Math.PI };
   return null;
 }
 
@@ -263,8 +264,31 @@ export function buildStreet(scene) {
     kit.collide(x - 0.15, z - 0.15, x + 0.15, z + 0.15);
   }
 
+  // the gate out to the country, in the south-east corner
+  const gate = new THREE.Group();
+  gate.position.set(21.3, 0, 8.9);
+  scene.add(gate);
+  for (const sx of [-1.1, 1.1]) kit.box(0.3, 2.6, 0.3, '#8c8270', sx, 1.3, 0, gate);
+  const lintel = kit.box(2.6, 0.3, 0.32, '#8c8270', 0, 2.75, 0, gate);
+  void lintel;
+  const gs = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), new THREE.MeshStandardMaterial({ map: textSign([['To the country', 50]], { w: 420, h: 104 }), roughness: 1, side: THREE.DoubleSide }));
+  gs.position.set(0, 3.25, 0);
+  gate.add(gs);
+  for (let k = 0; k < 6; k++) {
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), mat(k % 2 ? '#5f8a3e' : '#4f7a34'));
+    leaf.position.set(-1.1 + (k % 3) * 1.1, 2.95 + (k % 2) * 0.2, 0.1);
+    gate.add(leaf);
+  }
+  kit.interactables.push({ kind: 'exit', id: 'country', label: 'Out through the gate to the country', stand: [21.3, 7.7], face: Math.PI, mesh: gate });
+  const gtag = document.createElement('div');
+  gtag.className = 'door-tag';
+  gtag.innerHTML = 'The Country<small>meadow, wood, shore</small>';
+  const gto = new CSS2DObject(gtag);
+  gto.position.set(21.3, 2.2, 8.6);
+  scene.add(gto);
+
   // flower tubs in the open corners
-  for (const [x, z] of [[-20.5, -7.2], [20.5, -7.2], [-20.5, 7.2], [20.5, 7.2]]) {
+  for (const [x, z] of [[-20.5, -7.2], [20.5, -7.2], [-20.5, 7.2]]) {
     kit.box(1.4, 0.6, 1.4, '#9a6a4a', x, 0.3, z, scene, { collide: true });
     for (let k = 0; k < 5; k++) {
       const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), mat(k % 2 ? '#5f8a3e' : ['#c8384e', '#e0b040', '#9a4fb0'][k % 3]));

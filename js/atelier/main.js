@@ -8,6 +8,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { BENCHES } from './world.js';
 import { buildStreet, doorOf } from './street.js';
 import { buildAtelier, STATIONS } from './ateliers.js';
+import { buildCountry, skyWords } from './country.js';
 import { openBench as openInWorldBench, ACTIVITY_OF } from './bench.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
@@ -26,8 +27,8 @@ const R = 0.3; // apprentice radius
 const HINT = COARSE
   ? 'Tap the ground to walk, drag to look around. Tap a door to go in.'
   : 'Walk with WASD or click the ground. Drag to look around. E at a door or a bench.';
-const SCENES = ['street', ...BENCHES.map((b) => b.id)];
-const sceneName = (id) => (id === 'street' ? 'Atelier Square' : BENCHES.find((b) => b.id === id).atelier);
+const SCENES = ['street', 'country', ...BENCHES.map((b) => b.id)];
+const sceneName = (id) => (id === 'street' ? 'Atelier Square' : id === 'country' ? 'The Country' : BENCHES.find((b) => b.id === id).atelier);
 
 // ---- preferences (name and apron), per viewer ------------------------------
 function loadPrefs() {
@@ -108,7 +109,7 @@ function disposeScene(scene) {
 
 function buildScene(id) {
   const scene = new THREE.Scene();
-  const kit = id === 'street' ? buildStreet(scene) : buildAtelier(scene, id);
+  const kit = id === 'street' ? buildStreet(scene) : id === 'country' ? buildCountry(scene) : buildAtelier(scene, id);
   const s = { id, scene, kit };
   if (id === 'street') {
     // the Master stands outside his office
@@ -156,6 +157,11 @@ async function go(id, from) {
       player.z = 6.5;
       player.r = Math.PI;
     }
+  } else if (id === 'country') {
+    // in at the gate, the road running north ahead
+    player.x = 0;
+    player.z = 34.6;
+    player.r = Math.PI;
   } else {
     player.x = 0;
     player.z = 3.4;
@@ -168,8 +174,9 @@ async function go(id, from) {
   cam.z = player.z;
   cam.yaw = 0;
   // the square is seen wide, so its houses frame you; rooms closer in
-  cam.dist = (id === 'street' ? 11.5 : 7.5) * (innerWidth < innerHeight ? 1.3 : 1); // phones see more
-  cam.pitch = id === 'street' ? 0.5 : 0.62;
+  cam.dist = (id === 'street' ? 11.5 : id === 'country' ? 12 : 7.5) * (innerWidth < innerHeight ? 1.3 : 1); // phones see more
+  cam.pitch = id === 'street' ? 0.5 : id === 'country' ? 0.45 : 0.62;
+  sound.setScene(id === 'country' ? 'expose' : 'room'); // birdsong outdoors
 
   refreshSeals();
   hangOwnPrints();
@@ -436,7 +443,7 @@ function setStatus(s) {
 }
 function refreshCount() {
   const n = peers.size + 1;
-  const where = here ? sceneName(here.id) : '';
+  const where = here ? sceneName(here.id) + (here.kit.weather ? ` · ${skyWords(here.kit.weather)}` : '') : '';
   if (netStatus === 'online') statusEl.textContent = `${where} · ${n === 1 ? 'only you here' : `${n} here`}`;
   else if (netStatus === 'offline') statusEl.textContent = `${where} · reconnecting`;
   else statusEl.textContent = where;
@@ -694,6 +701,7 @@ function interact(it) {
   else if (it.kind === 'history') openPage(`history/#ch-${it.id}`);
   else if (it.kind === 'exit') {
     if (it.id === 'street') go('street', here.id);
+    else if (it.id === 'country') go('country', 'street');
     else if (it.id === 'master') openMaster();
     else if (it.id === 'history') openPage('history/');
     else if (it.id === 'ledger') openPage('ledger/');
@@ -847,9 +855,11 @@ function findPath(fx, fz, tx, tz) {
   const W = G.w;
   const start = s[1] * W + s[0];
   const goal = g[1] * W + g[0];
-  const cost = new Float32Array(grid.length).fill(Infinity);
+  // full precision, and each cell expanded once: rounding must not loop the search
+  const cost = new Float64Array(grid.length).fill(Infinity);
   const from = new Int32Array(grid.length).fill(-1);
-  const f = new Float32Array(grid.length);
+  const f = new Float64Array(grid.length);
+  const closed = new Uint8Array(grid.length);
   const h = (n) => Math.hypot((n % W) - g[0], Math.floor(n / W) - g[1]);
   const open = [start];
   cost[start] = 0;
@@ -882,6 +892,8 @@ function findPath(fx, fz, tx, tz) {
   };
   while (open.length) {
     const n = pop();
+    if (closed[n]) continue;
+    closed[n] = 1;
     if (n === goal) break;
     const i = n % W;
     const j = Math.floor(n / W);
@@ -891,7 +903,7 @@ function findPath(fx, fz, tx, tz) {
       const b = j + dj;
       if (a < 0 || b < 0 || a >= W || b >= G.h) continue;
       const m = b * W + a;
-      if (grid[m] || (di && dj && (grid[j * W + a] || grid[b * W + i]))) continue;
+      if (closed[m] || grid[m] || (di && dj && (grid[j * W + a] || grid[b * W + i]))) continue;
       const c = cost[n] + (di && dj ? Math.SQRT2 : 1);
       if (c < cost[m]) { cost[m] = c; from[m] = n; f[m] = c + h(m); push(m); }
     }
@@ -990,7 +1002,7 @@ function findNearest() {
   }
   if (rings) {
     rings.near.visible = !!nearest;
-    if (nearest) rings.near.position.set(nearest.stand[0], 0.03, nearest.stand[1]);
+    if (nearest) rings.near.position.set(nearest.stand[0], (here.kit.heightAt ? here.kit.heightAt(...nearest.stand) : 0) + 0.03, nearest.stand[1]);
   }
 }
 
@@ -1009,7 +1021,7 @@ function addRings(scene) {
 }
 function showTarget(x, z) {
   if (!rings) return;
-  rings.target.position.set(x, 0.03, z);
+  rings.target.position.set(x, (here.kit.heightAt ? here.kit.heightAt(x, z) : 0) + 0.03, z);
   rings.target.visible = true;
   rings.targetT = 1;
 }
@@ -1070,6 +1082,15 @@ function buildMap() {
   mid.append(square, mapCell(MAP_ORDER.east));
   grid.append(mid);
   row('south', MAP_ORDER.south);
+  const out = document.createElement('div');
+  out.className = 'map-row country';
+  const c = document.createElement('button');
+  c.className = 'map-square map-country';
+  c.dataset.id = 'country';
+  c.innerHTML = '<b>The Country</b><small>out through the gate: meadow, fern wood, mill stream, shore, Ruin Hill</small>';
+  c.addEventListener('click', () => goMap('country'));
+  out.append(c);
+  grid.append(out);
 }
 buildMap();
 function refreshMap() {
@@ -1196,6 +1217,7 @@ const look = new THREE.Vector3();
 const want = new THREE.Vector3();
 const lookWant = new THREE.Vector3();
 let gliding = false;
+let lastSkyTick = -1;
 const BRUSH_CURSOR =
   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M4 24c2-1 3-1 4-3l9-13 3 2-9 13c-1 2-1 3-1 4-2 0-4-1-6-3z' fill='%23c8c2b4'/%3E%3Cpath d='M18 7l3-4 4 3-4 3z' fill='%237fa3c8'/%3E%3C/svg%3E") 4 24, crosshair`;
 
@@ -1215,8 +1237,10 @@ function frame() {
   if (bench) bench.update(dt);
   // at a station the camera looks over your shoulder; step out of its way
   me.root.visible = !(bench && !bench.walking && (bench.hideMe || Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4));
-  me.root.position.set(player.x, 0, player.z);
+  const ground = here.kit.heightAt || (() => 0);
+  me.root.position.set(player.x, ground(player.x, player.z), player.z);
   me.root.rotation.y = player.r;
+  if (here.kit.tick) here.kit.tick(dt, t);
   me.animate(dt, player.speed, t);
   if (here.master) here.master.animate(dt, 0, t + 1.3);
   if (entered && !bench) findNearest();
@@ -1232,7 +1256,7 @@ function frame() {
     let d = p.tr - p.r;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     p.r += d * k;
-    p.av.root.position.set(p.x, 0, p.z);
+    p.av.root.position.set(p.x, ground(p.x, p.z), p.z);
     p.av.root.rotation.y = p.r;
     p.av.animate(dt, Math.hypot(p.x - ox, p.z - oz) / dt, t);
   }
@@ -1251,11 +1275,12 @@ function frame() {
     look.lerp(bench.shot.look, g);
   } else {
     const cp = Math.cos(cam.pitch) * cam.dist;
-    want.set(cam.x + Math.sin(cam.yaw) * cp, 1.2 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp);
+    const gy = ground(cam.x, cam.z);
+    want.set(cam.x + Math.sin(cam.yaw) * cp, gy + 1.2 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp);
     // coming back from a shot, ease out; otherwise follow as before
     const g = gliding && !REDUCED ? 1 - Math.exp(-dt * 3.2) : 1;
     camera.position.lerp(want, g);
-    look.lerp(lookWant.set(cam.x, 1.2, cam.z), g);
+    look.lerp(lookWant.set(cam.x, gy + 1.2, cam.z), g);
     if (gliding && camera.position.distanceTo(want) < 0.05) gliding = false;
   }
   if (bench) gliding = true;
@@ -1263,6 +1288,7 @@ function frame() {
   canvas.style.cursor = bench && bench.cursor === 'brush' ? BRUSH_CURSOR : bench && bench.cursor === 'tilt' ? 'ew-resize' : '';
   fadeWalls(dt);
 
+  if (here.kit.weather && Math.floor(t) % 5 === 0 && Math.floor(t) !== lastSkyTick) { lastSkyTick = Math.floor(t); refreshCount(); }
   if (net && entered) {
     sendTimer += dt;
     if (sendTimer > 0.25) {

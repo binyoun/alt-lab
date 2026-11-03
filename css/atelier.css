@@ -522,3 +522,13 @@ body.at-bench .hud, body.at-bench .prompt { display: none; }
   .map-row.middle { grid-template-columns: 1fr; }
 }
 .bench-bar[hidden] { display: none; }
+.map-row.country { grid-template-columns: 1fr; }
+.map-country { background: #dde8cc; border-left: 6px solid #5f8a3e; }
+.place-tag {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1rem;
+  color: #fffaf0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
