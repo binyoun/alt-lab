@@ -9,7 +9,7 @@ import { createRitual, stageType } from '../engine/ritual-core.js';
 import { ledger } from '../engine/ledger.js';
 import { sound } from '../engine/sound.js';
 import { readLetters } from '../engine/letters.js';
-import { commissionsFor } from '../content/commissions.js';
+import { commissionsFor, PROCESSES } from '../content/commissions.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STATION_OF = { upload: 'coat', info: 'coat', paint: 'coat', hold: 'expose', reveal: 'wash', result: 'result' };
@@ -17,7 +17,7 @@ export const ACTIVITY_OF = { coat: 'coating', expose: 'exposing', wash: 'washing
 
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function openBench({ config, stations, kit, scene, camera, me, walkTo, setActivity, hooks, onClose }) {
+export function openBench({ config, stations, kit, scene, camera, me, walkTo, setActivity, hooks, placeName, onHang, onClose }) {
   const core = createRitual(config, { maxCanvas: 1024, hooks });
   const { state } = core;
 
@@ -120,8 +120,8 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   strip.className = 'bench-strip';
   strip.innerHTML = `
     <div class="bench-top">
-      <button class="btn ghost" data-step-back>Step back</button>
-      <span class="bench-name">${esc(config.name)}</span>
+      <button class="back-btn" data-step-back><span aria-hidden="true">&larr;</span> Back to ${esc(placeName || 'the room')} <kbd>Esc</kbd></button>
+      <div class="bench-title"><span class="bench-name">${esc(config.name)}</span><span class="step-count"></span></div>
       <button class="letters-btn" data-letters hidden></button>
     </div>
     <div class="paper-card" hidden>
@@ -209,6 +209,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       span.classList.toggle('on', i === idx);
       span.classList.toggle('done', i < idx);
     });
+    el('.step-count').textContent = `Step ${idx + 1} of ${config.stages.length} · ${stage.title}`;
     card.hidden = type !== 'upload';
     if (captionOverride && type === 'hold') {
       captionEl.innerHTML = captionOverride + stage.caption;
@@ -307,18 +308,26 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       const row = document.createElement('div');
       row.className = 'row';
       controlsEl.appendChild(row);
+      // the way out of a finished print: press it, then hang it on the line
+      const finish = () => {
+        row.querySelector('.primary-action').remove();
+        const hang = addButton('Hang it on the line', () => hangIt(), 'primary-action', row);
+        row.prepend(hang);
+        el('.bench-bar').classList.add('finished');
+      };
       const press = addButton('Press it into the ledger', function () {
         const r = core.press();
         if (!r) return;
-        this.textContent = 'Pressed into the ledger';
-        this.disabled = true;
         if (r.lines.length) {
           fulfilledEl.innerHTML = r.lines.join('<br>');
           fulfilledEl.hidden = false;
         }
+        if (r.seal) dropSeal();
         updateLettersBtn();
-      }, '', row);
-      if (state.pressed) { press.textContent = 'Pressed into the ledger'; press.disabled = true; }
+        finish();
+      }, 'primary-action', row);
+      if (state.pressed) setTimeout(finish);
+      void press;
       addButton(config.downloadLabel || 'Download', () => core.download(), 'ghost', row);
       addButton('Make another', () => core.makeAnother(), 'ghost', row);
       addButton('New photograph', () => {
@@ -372,7 +381,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
 
   // returns true when the pointer event was the bench's to handle
   function pointer(kind, e, rect) {
-    if (walking) return kind !== 'move';
+    if (walking || hanging) return kind !== 'move';
     const type = stageType(core.stage());
     if (type === 'paint') {
       if (kind === 'down') {
@@ -396,6 +405,87 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       if (kind === 'up') { tilting = false; core.setTilt(0); return true; }
     }
     return kind !== 'move'; // taps belong to the bench while it is open
+  }
+
+  // ---- effects: a shaft of light, ripples in the wash, the seal ----------------------------
+  const fxGroup = new THREE.Group();
+  scene.add(fxGroup);
+  const sunDir = kit.sun ? kit.sun.position.clone().sub(kit.sun.target.position).normalize() : new THREE.Vector3(0.3, 1, 0.3).normalize();
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.4, 7, 20, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#fff1c4', transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  fxGroup.add(shaft);
+  const DUST = 70;
+  const dustGeo = new THREE.BufferGeometry();
+  const dustPos = new Float32Array(DUST * 3);
+  const dustSeed = Array.from({ length: DUST }, () => [Math.random(), Math.random() * Math.PI * 2, Math.random()]);
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: '#fff4d6', size: 0.035, transparent: true, opacity: 0, depthWrite: false }));
+  fxGroup.add(dust);
+  let shaftLevel = 0;
+
+  const ripples = [0, 1, 2].map((i) => {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.33, 40), new THREE.MeshBasicMaterial({ color: '#e8f4f8', transparent: true, opacity: 0, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.userData.phase = i / 3;
+    fxGroup.add(m);
+    return m;
+  });
+  let rippleLevel = 0;
+
+  // the house seal, dropped onto the corner of a print the Master keeps
+  let seal = null;
+  let sealT = 0;
+  function dropSeal() {
+    const color = (PROCESSES[config.id] || {}).seal || '#5b1f1a';
+    seal = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.048, 0.014, 18), new THREE.MeshStandardMaterial({ color, roughness: 0.35 }));
+    seal.castShadow = true;
+    scene.add(seal);
+    sealT = 0;
+  }
+  const sealSpot = new THREE.Vector3();
+  const sealNormal = new THREE.Vector3();
+
+  // ---- hanging it on the line, which is also the way out ---------------------------------------
+  let hanging = false;
+  function hangIt() {
+    const L = kit.dryingLine;
+    if (!L) { close_(); return; }
+    const [x0, z0] = L.from;
+    const [x1, z1] = L.to;
+    const mx = (x0 + x1) / 2;
+    const mz = (z0 + z1) / 2;
+    // stand on the room side of the line, facing it
+    let nx = -(z1 - z0);
+    let nz = x1 - x0;
+    const len = Math.hypot(nx, nz);
+    nx /= len;
+    nz /= len;
+    if (nx * -mx + nz * -mz < 0) { nx = -nx; nz = -nz; }
+    const sx = mx + nx * 1.0;
+    const sz = mz + nz * 1.0;
+    hanging = true;
+    strip.classList.add('moving');
+    el('.bench-bar').hidden = true;
+    station = 'line';
+    shot = null;
+    carry();
+    walking = true;
+    setActivity('finishing');
+    walkTo(sx, sz, () => {
+      walking = false;
+      me.rotation(Math.atan2(nx, nz) + Math.PI);
+      // up onto the line, facing the room
+      carried = false;
+      pose.pos.set(mx, L.y - 0.32, mz);
+      pose.quat.setFromEuler(new THREE.Euler(0, Math.atan2(nx, nz), 0));
+      shot = { pos: new THREE.Vector3(mx + nx * 2.6, 1.9, mz + nz * 2.6), look: new THREE.Vector3(mx, L.y - 0.4, mz) };
+      setTimeout(() => {
+        if (onHang) onHang();
+        close_();
+      }, REDUCED ? 200 : 1400);
+    });
   }
 
   // ---- per-frame ---------------------------------------------------------------------------
@@ -430,12 +520,58 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       const want = hemiBase * (exposingNow ? 1.35 : 1);
       kit.hemi.intensity += (want - kit.hemi.intensity) * Math.min(1, dt * 4);
     }
+    fx(dt);
+  }
+
+  let fxT = 0;
+  function fx(dt) {
+    fxT += dt;
+    // the shaft of light stands over the sheet at the exposure, brighter while held
+    const atLight = station === 'expose' && !walking;
+    shaftLevel += ((atLight ? (exposingNow ? 1 : 0.35) : 0) - shaftLevel) * Math.min(1, dt * 3);
+    shaft.material.opacity = 0.16 * shaftLevel;
+    dust.material.opacity = 0.8 * shaftLevel;
+    shaft.visible = dust.visible = shaftLevel > 0.01;
+    if (shaft.visible) {
+      shaft.position.copy(sheet.position).addScaledVector(sunDir, 3.5);
+      shaft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDir);
+      for (let i = 0; i < DUST; i++) {
+        const [h, a, r] = dustSeed[i];
+        const t = (h + fxT * 0.03 * (0.5 + r)) % 1;
+        const rad = 0.4 + t * 0.45;
+        const p = new THREE.Vector3(Math.cos(a + fxT * 0.2) * rad * r, 0, Math.sin(a + fxT * 0.2) * rad * r);
+        p.applyQuaternion(shaft.quaternion).add(sheet.position).addScaledVector(sunDir, 0.2 + t * 5);
+        dustPos.set([p.x, p.y, p.z], i * 3);
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+    }
+    // ripples spread round the sheet while it washes
+    const inWash = station === 'wash' && !walking && (state.washing || stageType(core.stage()) === 'reveal');
+    rippleLevel += ((inWash ? 1 : 0) - rippleLevel) * Math.min(1, dt * 3);
+    for (const r of ripples) {
+      const t = (fxT * 0.45 + r.userData.phase) % 1;
+      r.visible = rippleLevel > 0.01;
+      r.position.set(sheet.position.x, sheet.position.y + 0.004, sheet.position.z);
+      r.scale.setScalar(0.8 + t * 2.4);
+      r.material.opacity = (1 - t) * 0.55 * rippleLevel;
+    }
+    // the seal falls, bounces once and settles on the corner
+    if (seal) {
+      sealT = Math.min(1, sealT + dt * 1.6);
+      sealNormal.set(0, 0, 1).applyQuaternion(sheet.quaternion);
+      sealSpot.set(0.36, -0.34, 0).applyMatrix4(sheet.matrixWorld);
+      const drop = REDUCED ? 0 : Math.abs(Math.cos(sealT * Math.PI * 1.5)) * (1 - sealT) * 0.4;
+      seal.position.copy(sealSpot).addScaledVector(sealNormal, 0.01 + drop);
+      seal.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sealNormal);
+    }
   }
 
   function close_() {
     core.destroy();
     scene.remove(sheet);
     scene.remove(glass);
+    scene.remove(fxGroup);
+    if (seal) scene.remove(seal);
     tex.dispose();
     sheetMat.dispose();
     if (kit.sun) kit.sun.intensity = sunBase;

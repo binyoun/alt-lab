@@ -66,6 +66,10 @@
   <div class="hud-top">
     <div class="room">
       <span class="room-status"></span>
+      <span class="nav-buttons">
+        <button class="nav-btn" data-back-square hidden><span aria-hidden="true">&larr;</span> Back to the square</button>
+        <button class="nav-btn" data-map>Map <kbd>M</kbd></button>
+      </span>
       <span class="room-tools" hidden>
         <span class="room-code" data-room-code></span>
         <button data-copy-room>Copy link</button>
@@ -86,6 +90,15 @@
       <form class="chat"><input maxlength="140" placeholder="Say something (T)" aria-label="Say something to the room"></form>
     </div>
     <button class="prompt" hidden><kbd>E</kbd><span></span></button>
+  </div>
+</div>
+
+<div class="map-overlay" hidden>
+  <div class="map-card">
+    <h2>Atelier Square</h2>
+    <p class="map-note">Choose a house to go straight there.</p>
+    <div class="map-grid"></div>
+    <button class="btn ghost" data-map-close>Close <kbd>Esc</kbd></button>
   </div>
 </div>
 

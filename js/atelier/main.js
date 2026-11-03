@@ -138,6 +138,7 @@ async function go(id, from) {
   lineItems.length = 0;
   here = buildScene(id);
   here.scene.add(me.root);
+  addRings(here.scene);
   grid = null;
   nearest = null;
   promptBtn.hidden = true;
@@ -173,6 +174,8 @@ async function go(id, from) {
   refreshSeals();
   hangOwnPrints();
   try { history.replaceState(null, '', urlFor(id)); } catch (e) { /* file:// */ }
+  $('[data-back-square]').hidden = id === 'street';
+  refreshMap();
   if (entered) startNet();
   refreshCount();
   if (!REDUCED) setTimeout(() => fader.classList.remove('on'), 60);
@@ -550,8 +553,11 @@ async function openBench(id) {
       me: meHandle,
       walkTo: (x, z, then) => walkTo(x, z, then),
       setActivity: (a) => { player.activity = a || ''; },
-      hooks: benchHooks(id),
+      hooks: { ...benchHooks(id), onPress: (p) => { pendingHang = pressed(p, false); } },
+      placeName: sceneName(here.id),
+      onHang: () => hangPending(),
       onClose: () => {
+        hangPending(); // a pressed print is never lost by stepping back
         bench = null;
         overlayOpen = null;
         document.body.classList.remove('at-bench');
@@ -590,21 +596,39 @@ function benchHooks(id) {
   return hooks;
 }
 
-function pressed(p) {
+// A pressed print: hang it on this atelier's line (now, or once it has been
+// carried there) and, for specimen prints, share its recipe with the room.
+let pendingHang = null;
+function hangPending() {
+  if (!pendingHang) return;
+  const { item, share } = pendingHang;
+  pendingHang = null;
+  hangPrint(item);
+  share();
+}
+function pressed(p, hangNow = true) {
   // a copy large enough to read on the line; the ritual canvas goes away on close
   const img = document.createElement('canvas');
   img.width = 360;
   img.height = Math.round(360 * p.print.height / p.print.width);
   img.getContext('2d').drawImage(p.print, 0, 0, img.width, img.height);
-  hangPrint({ key: 'own-' + Date.now(), mine: true, name: prefs.name, process: p.process, tier: p.tier, img });
+  const item = { key: 'own-' + Date.now(), mine: true, name: prefs.name, process: p.process, tier: p.tier, img };
   refreshSeals();
   if (p.partner && net && net.online) net.pairdone(p.partner.id, p.process, p.skipped ? 'thin' : p.tier);
-  if (p.specimen && p.recipe && !p.skipped && net && net.online) {
-    net.hang({ process: p.process, tier: p.tier, ...p.recipe, ...(p.partner ? { with: p.partner.id } : {}) });
-    toast('Hung on the line for everyone in this atelier.');
-  } else if (net && net.online) {
-    toast(p.specimen ? 'Hung on your line. Prints the studio made for you stay private.' : 'Hung on your line. Prints of your own photographs stay on your device.');
+  const share = () => {
+    if (p.specimen && p.recipe && !p.skipped && net && net.online) {
+      net.hang({ process: p.process, tier: p.tier, ...p.recipe, ...(p.partner ? { with: p.partner.id } : {}) });
+      toast('Hung on the line for everyone in this atelier.');
+    } else if (net && net.online) {
+      toast(p.specimen ? 'Hung on your line. Prints the studio made for you stay private.' : 'Hung on your line. Prints of your own photographs stay on your device.');
+    }
+  };
+  if (hangNow) {
+    hangPrint(item);
+    share();
+    return null;
   }
+  return { item, share };
 }
 
 function openPage(src) {
@@ -686,6 +710,7 @@ addEventListener('keydown', (e) => {
     if (bench && document.querySelector('.bench-strip .letters-overlay:not([hidden])')) {
       document.querySelector('.bench-strip .letters-overlay').hidden = true;
     } else if (bench) bench.close();
+    else if (overlayOpen === 'map') closeMap();
     else closeOverlay();
     chatInput.blur();
     return;
@@ -694,6 +719,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if ((k === 'e' || k === 'enter') && nearest) { interact(nearest); return; }
   if (k === 't' || k === 'enter') { e.preventDefault(); chatInput.focus(); return; }
+  if (k === 'm') { openMap(); return; }
   keys.add(k);
   if (k.startsWith('arrow')) e.preventDefault();
 });
@@ -748,7 +774,7 @@ function tap(cx, cy) {
     if (h.object.userData.lineItem) { showPrint(h.object.userData.lineItem); return; }
     const it = k.interactables.find((i) => isChild(h.object, i.mesh));
     if (it) { walkTo(it.stand[0], it.stand[1], it); return; }
-    if (isChild(h.object, k.ground)) { walkTo(h.point.x, h.point.z, null); return; }
+    if (isChild(h.object, k.ground)) { walkTo(h.point.x, h.point.z, null); showTarget(h.point.x, h.point.z); return; }
   }
 }
 function isChild(o, parent) {
@@ -962,7 +988,119 @@ function findNearest() {
     promptBtn.hidden = !best;
     if (best) promptBtn.querySelector('span').textContent = best.label;
   }
+  if (rings) {
+    rings.near.visible = !!nearest;
+    if (nearest) rings.near.position.set(nearest.stand[0], 0.03, nearest.stand[1]);
+  }
 }
+
+// ---- rings on the ground: what is in front of you, and where you are going ---
+let rings = null;
+function addRings(scene) {
+  const make = (color, r0, r1) => {
+    const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.visible = false;
+    m.renderOrder = 2;
+    scene.add(m);
+    return m;
+  };
+  rings = { near: make('#f6d29a', 0.42, 0.52), target: make('#e8e4da', 0.18, 0.24), targetT: 0 };
+}
+function showTarget(x, z) {
+  if (!rings) return;
+  rings.target.position.set(x, 0.03, z);
+  rings.target.visible = true;
+  rings.targetT = 1;
+}
+function animateRings(dt, t) {
+  if (!rings) return;
+  const pulse = REDUCED ? 1 : 1 + Math.sin(t * 4) * 0.08;
+  rings.near.scale.setScalar(pulse);
+  rings.near.material.opacity = 0.55 + (REDUCED ? 0 : Math.sin(t * 4) * 0.2);
+  if (rings.targetT > 0) {
+    rings.targetT = Math.max(0, rings.targetT - dt * 1.2);
+    rings.target.material.opacity = rings.targetT * 0.8;
+    rings.target.scale.setScalar(1 + (1 - rings.targetT) * 1.4);
+    if (!rings.targetT || !player.path.length) rings.target.visible = rings.targetT > 0;
+  }
+}
+
+// ---- the map: every house on the square, one tap away ------------------------
+const MAP_ORDER = {
+  north: ['vandyke', 'platinum', 'saltprint', 'albumen', 'master'],
+  west: 'cyanotype',
+  east: 'history',
+  south: ['daguerreotype', 'tintype', 'anthotype', 'lumen', 'ledger'],
+};
+const MAP_OTHER = {
+  master: { name: "The Master's Office", sub: 'Seals and letters', tint: '#2a2622' },
+  history: { name: 'The History Hall', sub: 'From 1826 to now', tint: '#3a3226' },
+  ledger: { name: 'The Ledger', sub: 'Your prints and seals', tint: '#5b1f1a' },
+};
+function mapCell(id) {
+  const b = BENCHES.find((x) => x.id === id);
+  const info = b ? { name: b.atelier, sub: b.name, tint: b.tint } : MAP_OTHER[id];
+  const btn = document.createElement('button');
+  btn.className = 'map-house';
+  btn.dataset.id = id;
+  btn.style.setProperty('--tint', info.tint);
+  btn.innerHTML = `<b>${info.name}</b><small>${info.sub}</small>`;
+  btn.addEventListener('click', () => goMap(id));
+  return btn;
+}
+function buildMap() {
+  const grid = $('.map-grid');
+  grid.innerHTML = '';
+  const row = (cls, ids) => {
+    const r = document.createElement('div');
+    r.className = 'map-row ' + cls;
+    ids.forEach((id) => r.append(mapCell(id)));
+    grid.append(r);
+  };
+  row('north', MAP_ORDER.north);
+  const mid = document.createElement('div');
+  mid.className = 'map-row middle';
+  mid.append(mapCell(MAP_ORDER.west));
+  const square = document.createElement('button');
+  square.className = 'map-square';
+  square.dataset.id = 'street';
+  square.innerHTML = '<b>The square</b><small>fountain, benches</small>';
+  square.addEventListener('click', () => goMap('street'));
+  mid.append(square, mapCell(MAP_ORDER.east));
+  grid.append(mid);
+  row('south', MAP_ORDER.south);
+}
+buildMap();
+function refreshMap() {
+  document.querySelectorAll('.map-grid [data-id]').forEach((b) => {
+    const isHere = here && b.dataset.id === here.id;
+    b.classList.toggle('here', isHere);
+    b.classList.toggle('sealed', ledger.hasSeal(b.dataset.id));
+  });
+}
+function openMap() {
+  if (!entered || bench || (overlayOpen && overlayOpen !== 'map')) return;
+  refreshMap();
+  $('.map-overlay').hidden = false;
+  overlayOpen = 'map';
+}
+function closeMap() {
+  $('.map-overlay').hidden = true;
+  if (overlayOpen === 'map') overlayOpen = null;
+}
+function goMap(id) {
+  closeMap();
+  if (id === 'master') { openMaster(); return; }
+  if (id === 'history') { openPage('history/'); return; }
+  if (id === 'ledger') { openPage('ledger/'); return; }
+  if (here && id === here.id) return;
+  go(id, here.id === 'street' ? 'street' : here.id);
+}
+$('[data-map]').addEventListener('click', openMap);
+$('[data-map-close]').addEventListener('click', closeMap);
+$('.map-overlay').addEventListener('click', (e) => { if (e.target.classList.contains('map-overlay')) closeMap(); });
+$('[data-back-square]').addEventListener('click', () => { if (here && here.id !== 'street' && !bench) go('street', here.id); });
 promptBtn.addEventListener('click', () => nearest && interact(nearest));
 
 // ---- walls step aside for the camera -------------------------------------------------------------------
@@ -1082,6 +1220,8 @@ function frame() {
   me.animate(dt, player.speed, t);
   if (here.master) here.master.animate(dt, 0, t + 1.3);
   if (entered && !bench) findNearest();
+  if (bench && rings) rings.near.visible = false;
+  animateRings(dt, t);
 
   for (const p of peers.values()) {
     const k = Math.min(1, dt * 6);
