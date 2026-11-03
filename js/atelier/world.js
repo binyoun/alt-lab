@@ -261,9 +261,11 @@ export function makeKit(scene, bounds) {
   kit.light = ({ sky = '#f3dcb4', ground = '#2b2117', ambient = 0.8, sun = '#ffd9a0', sunI = 2.0, pos = [10, 18, 8], background = '#14120e', fog = [24, 60] } = {}) => {
     scene.background = new THREE.Color(background);
     scene.fog = new THREE.Fog(background, fog[0], fog[1]);
-    scene.add(new THREE.HemisphereLight(sky, ground, ambient));
+    kit.hemi = new THREE.HemisphereLight(sky, ground, ambient);
+    scene.add(kit.hemi);
     if (sunI > 0) {
       const s = new THREE.DirectionalLight(sun, sunI);
+      kit.sun = s;
       s.position.set(...pos);
       s.castShadow = true;
       s.shadow.mapSize.set(2048, 2048);
@@ -423,8 +425,9 @@ PROPS.iron = (g, { box, cyl, b }) => {
   const sens = b.id === 'cyanotype' ? '#c9d36a' : b.id === 'vandyke' ? '#c8a95e' : '#d9cf9a';
   bottle(cyl, g, -0.75, -0.05, '#5a3a1e');
   bottle(cyl, g, -0.6, 0.12, '#5a3a1e');
-  paper(box, g, -0.2, 0.12, sens, 0.1);
-  cyl(0.02, 0.03, 0.25, mat(PALETTE.wood), 0.08, 0.96, 0.18, g).rotation.z = 1.4; // hake brush
+  // the sheet itself is the apprentice's; only a spare one waits, to the side
+  paper(box, g, -0.62, 0.3, sens, 0.25);
+  cyl(0.02, 0.03, 0.25, mat(PALETTE.wood), 0.4, 0.96, 0.3, g).rotation.z = 1.4; // hake brush
   // contact frame propped toward the sun
   const f = box(0.46, 0.03, 0.36, mat(PALETTE.woodDark), 0.62, 1.05, 0.05, g);
   f.rotation.x = -0.7;

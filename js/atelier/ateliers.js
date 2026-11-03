@@ -125,8 +125,12 @@ const STYLES = {
       kit.box(1.6, 0.6, 0.9, PALETTE.stone, 3.6, 0.3, -3.6, kit.scene, { collide: true });
       const water = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.7), mat('#4f7a8c', { roughness: 0.15, metalness: 0.2 }));
       water.rotation.x = -Math.PI / 2;
-      water.position.set(3.6, 0.58, -3.6);
+      water.position.set(3.6, 0.605, -3.6);
       kit.scene.add(water);
+      // the sun table, where a coated sheet lies under glass in a printing frame
+      kit.box(1.1, 0.06, 0.8, PALETTE.wood, 2.4, 0.8, -0.6);
+      for (const [dx, dz] of [[-0.48, -0.33], [0.48, -0.33], [-0.48, 0.33], [0.48, 0.33]]) kit.box(0.06, 0.8, 0.06, PALETTE.woodDark, 2.4 + dx, 0.4, -0.6 + dz);
+      kit.collide(1.85, -1.0, 2.95, -0.2);
       // ferns, as Anna Atkins would have had them
       for (const [x, z] of [[-5.8, -4.4], [-5.8, 3.8], [3.8, 4.2], [-2.5, 4.3]]) pot(kit, x, z, 1.2, '#4c7a3a');
       // blue prints drying on a cord over the yard
@@ -325,6 +329,40 @@ const STYLES = {
       kit.box(0.02, 0.02, 2.6, '#cbbd9c', -5.6, 2.05, -2.2, kit.scene, { shadow: false });
       table(kit, -4.4, 2.4, 1.2, 0.7);
       kit.print('img/print/lumen.jpg', -4.4, 0.88, 2.4, 0, 0.5, 0.38);
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Where the in-world ritual happens in each atelier. For every station:
+// where the apprentice stands (and faces), where the sheet lies, and the
+// camera shot. Stages map to stations by type: upload, info and paint at
+// the bench; hold at the light; reveal in the wash; result held up to look.
+// Ateliers without stations still open the ritual as a page.
+
+export const STATIONS = {
+  cyanotype: {
+    coat: {
+      stand: [0, -2.45], face: 0,
+      sheet: { pos: [0, 0.955, -3.5], rot: [-Math.PI / 2, 0, 0] },
+      cam: { pos: [0, 2.15, -2.55], look: [0, 0.95, -3.5] },
+    },
+    expose: {
+      stand: [2.4, 0.45], face: 0,
+      sheet: { pos: [2.4, 0.86, -0.6], rot: [-Math.PI / 2 + 0.25, 0, 0] },
+      glass: true,
+      cam: { pos: [4.7, 2.6, 1.6], look: [2.3, 0.8, -0.7] },
+    },
+    wash: {
+      stand: [3.6, -2.55], face: 0,
+      sheet: { pos: [3.6, 0.615, -3.6], rot: [-Math.PI / 2, 0, 0.1] },
+      cam: { pos: [3.6, 2.0, -2.2], look: [3.6, 0.55, -3.6] },
+    },
+    result: {
+      stand: [3.6, -2.55], face: 0,
+      sheet: { pos: [3.6, 1.45, -3.15], rot: [0, 0, 0] },
+      cam: { pos: [3.6, 1.5, -1.95], look: [3.6, 1.42, -3.15] },
+      close: true,
     },
   },
 };

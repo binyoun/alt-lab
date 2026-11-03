@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { BENCHES } from './world.js';
 import { buildStreet, doorOf } from './street.js';
-import { buildAtelier } from './ateliers.js';
+import { buildAtelier, STATIONS } from './ateliers.js';
+import { openBench as openInWorldBench, ACTIVITY_OF } from './bench.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
 import { startRitual } from '../engine/ritual.js';
@@ -287,9 +288,25 @@ function removePeer(id) {
   peers.delete(id);
   refreshCount();
 }
+const WORKING = { coating: 'coating a sheet', exposing: 'in the light', washing: 'at the wash', finishing: 'looking over a print' };
 function activityText(a) {
-  const b = BENCHES.find((x) => x.id === a);
-  return b ? 'at the bench' : '';
+  if (WORKING[a]) return WORKING[a];
+  return BENCHES.find((x) => x.id === a) ? 'at the bench' : '';
+}
+
+// Someone working carries a sheet; to everyone else it is blank paper.
+const blankSheet = new THREE.MeshStandardMaterial({ color: '#efe9dc', roughness: 0.9, side: THREE.DoubleSide });
+function peerSheet(p) {
+  const want = !!WORKING[p.a];
+  if (want && !p.sheet) {
+    p.sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.32), blankSheet);
+    p.sheet.position.set(0, 1.05, 0.38);
+    p.sheet.rotation.x = -1.1;
+    p.av.root.add(p.sheet);
+  } else if (!want && p.sheet) {
+    p.av.root.remove(p.sheet);
+    p.sheet = null;
+  }
 }
 
 function startNet() {
@@ -322,6 +339,7 @@ function startNet() {
         if (p.a !== m.a) {
           p.a = m.a;
           p.tagEl.dataset.act = activityText(m.a);
+          peerSheet(p);
         }
       },
       chat(m) {
@@ -503,12 +521,58 @@ let overlayOpen = null;
 // sheets partners have coated and handed to you, waiting at their bench
 const sheets = {};
 
+// the apprentice as the in-world bench sees them
+const meHandle = {
+  x: () => player.x,
+  z: () => player.z,
+  rotation(face) { player.r = face + Math.PI; },
+  handsWorld(pos, quat) {
+    pos.set(player.x + Math.sin(player.r) * 0.38, 1.05, player.z + Math.cos(player.r) * 0.38);
+    quat.setFromEuler(new THREE.Euler(-1.1, player.r, 0, 'YXZ'));
+  },
+};
+let bench = null; // the in-world bench, when one is open
+
 async function openBench(id) {
   const mod = await import(`../processes/${id}.js`);
+  if (STATIONS[id]) {
+    overlayOpen = 'inworld';
+    document.body.classList.add('at-bench');
+    promptBtn.hidden = true;
+    bench = openInWorldBench({
+      config: mod.default,
+      stations: STATIONS[id],
+      kit: here.kit,
+      scene: here.scene,
+      camera,
+      me: meHandle,
+      walkTo: (x, z, then) => walkTo(x, z, then),
+      setActivity: (a) => { player.activity = a || ''; },
+      hooks: benchHooks(id),
+      onClose: () => {
+        bench = null;
+        overlayOpen = null;
+        document.body.classList.remove('at-bench');
+        me.root.visible = true;
+        player.path = [];
+        player.pending = null;
+        refreshSeals();
+        canvas.focus();
+      },
+    });
+    sound.setScene('room');
+    return;
+  }
   overlayOpen = 'bench';
   benchOverlay.hidden = false;
   document.body.classList.add('in-overlay');
   player.activity = id;
+  ritual = startRitual(benchHost, mod.default, benchHooks(id));
+  benchHost.scrollTop = 0;
+  sound.setScene('room');
+}
+
+function benchHooks(id) {
   const hooks = { onPress: pressed };
   if (net && net.online) {
     hooks.partners = () => [...peers.entries()]
@@ -521,9 +585,7 @@ async function openBench(id) {
     delete sheets[id];
     hooks.preset = { seed: s.seed, points: s.points, from: { id: s.from, name: s.name } };
   }
-  ritual = startRitual(benchHost, mod.default, hooks);
-  benchHost.scrollTop = 0;
-  sound.setScene('room');
+  return hooks;
 }
 
 function pressed(p) {
@@ -618,7 +680,14 @@ const keys = new Set();
 const typing = () => document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
 
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeOverlay(); chatInput.blur(); return; }
+  if (e.key === 'Escape') {
+    if (bench && document.querySelector('.bench-strip .letters-overlay:not([hidden])')) {
+      document.querySelector('.bench-strip .letters-overlay').hidden = true;
+    } else if (bench) bench.close();
+    else closeOverlay();
+    chatInput.blur();
+    return;
+  }
   if (overlayOpen || typing() || !entered) return;
   const k = e.key.toLowerCase();
   if ((k === 'e' || k === 'enter') && nearest) { interact(nearest); return; }
@@ -632,12 +701,17 @@ addEventListener('blur', () => keys.clear());
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let drag = null;
+function benchPointer(kind, e) {
+  return bench && bench.pointer(kind, e, canvas.getBoundingClientRect());
+}
 canvas.addEventListener('pointerdown', (e) => {
   if (!entered) return;
+  if (benchPointer('down', e)) { canvas.setPointerCapture(e.pointerId); e.preventDefault(); return; }
   drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId };
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (benchPointer('move', e)) return;
   if (!drag || drag.id !== e.pointerId) return;
   const dx = e.clientX - drag.x;
   const dy = e.clientY - drag.y;
@@ -649,6 +723,7 @@ canvas.addEventListener('pointermove', (e) => {
   drag.y = e.clientY;
 });
 canvas.addEventListener('pointerup', (e) => {
+  if (benchPointer('up', e)) return;
   if (!drag) return;
   const tapped = !drag.moved;
   drag = null;
@@ -656,6 +731,7 @@ canvas.addEventListener('pointerup', (e) => {
 });
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  if (bench) return;
   cam.dist = Math.min(13, Math.max(3.2, cam.dist * (1 + Math.sign(e.deltaY) * 0.08)));
 }, { passive: false });
 
@@ -834,7 +910,7 @@ function step(dt) {
       if (!player.path.length && player.pending) {
         const it = player.pending;
         player.pending = null;
-        interact(it);
+        if (typeof it === 'function') it(); else interact(it);
       }
     } else {
       mx = (tx - player.x) / d;
@@ -859,7 +935,8 @@ function step(dt) {
         const it = player.pending;
         player.path = [];
         player.pending = null;
-        if (it && Math.hypot(it.stand[0] - player.x, it.stand[1] - player.z) < 1.8) interact(it);
+        if (typeof it === 'function') it();
+        else if (it && Math.hypot(it.stand[0] - player.x, it.stand[1] - player.z) < 1.8) interact(it);
       }
     } else player.stuck = 0;
     let d = Math.atan2(mx, mz) - player.r;
@@ -976,6 +1053,11 @@ function welcome() {
 const clock = new THREE.Clock();
 let sendTimer = 0;
 const look = new THREE.Vector3();
+const want = new THREE.Vector3();
+const lookWant = new THREE.Vector3();
+let gliding = false;
+const BRUSH_CURSOR =
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cpath d='M4 24c2-1 3-1 4-3l9-13 3 2-9 13c-1 2-1 3-1 4-2 0-4-1-6-3z' fill='%23c8c2b4'/%3E%3Cpath d='M18 7l3-4 4 3-4 3z' fill='%237fa3c8'/%3E%3C/svg%3E") 4 24, crosshair`;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -988,13 +1070,16 @@ function frame() {
     return;
   }
 
-  if (entered && !overlayOpen) step(dt);
+  if (entered && (!overlayOpen || (bench && bench.walking))) step(dt);
   else player.speed = 0;
+  if (bench) bench.update(dt);
+  // at a station the camera looks over your shoulder; step out of its way
+  me.root.visible = !(bench && !bench.walking && Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4);
   me.root.position.set(player.x, 0, player.z);
   me.root.rotation.y = player.r;
   me.animate(dt, player.speed, t);
   if (here.master) here.master.animate(dt, 0, t + 1.3);
-  if (entered) findNearest();
+  if (entered && !bench) findNearest();
 
   for (const p of peers.values()) {
     const k = Math.min(1, dt * 6);
@@ -1017,9 +1102,23 @@ function frame() {
   const k = 1 - Math.exp(-dt * 6);
   cam.x += (player.x - cam.x) * k;
   cam.z += (player.z - cam.z) * k;
-  const cp = Math.cos(cam.pitch) * cam.dist;
-  camera.position.set(cam.x + Math.sin(cam.yaw) * cp, 1.2 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp);
-  camera.lookAt(look.set(cam.x, 1.2, cam.z));
+  if (bench && bench.shot) {
+    // the bench's shot: glide there, or cut when motion is reduced
+    const g = REDUCED ? 1 : 1 - Math.exp(-dt * 3.2);
+    camera.position.lerp(bench.shot.pos, g);
+    look.lerp(bench.shot.look, g);
+  } else {
+    const cp = Math.cos(cam.pitch) * cam.dist;
+    want.set(cam.x + Math.sin(cam.yaw) * cp, 1.2 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp);
+    // coming back from a shot, ease out; otherwise follow as before
+    const g = gliding && !REDUCED ? 1 - Math.exp(-dt * 3.2) : 1;
+    camera.position.lerp(want, g);
+    look.lerp(lookWant.set(cam.x, 1.2, cam.z), g);
+    if (gliding && camera.position.distanceTo(want) < 0.05) gliding = false;
+  }
+  if (bench) gliding = true;
+  camera.lookAt(look);
+  canvas.style.cursor = bench && bench.cursor === 'brush' ? BRUSH_CURSOR : bench && bench.cursor === 'tilt' ? 'ew-resize' : '';
   fadeWalls(dt);
 
   if (net && entered) {
@@ -1039,6 +1138,8 @@ if (new URLSearchParams(location.search).has('debug')) {
   window.__atelier = {
     player, walkTo, lineItems, peers, go, interact,
     get world() { return here.kit; },
+    get bench() { return bench; },
+    camera,
     get here() { return here.id; },
   };
 }
