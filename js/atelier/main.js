@@ -1,6 +1,6 @@
-// Atelier Row: walk the street, go through a door into one process's own
+// Atelier Square: walk the square, go through a door into one process's own
 // atelier, step up to its bench and the ritual opens in front of you.
-// Each atelier (and the street) is its own presence room, so you meet the
+// Each atelier (and the square) is its own presence room, so you meet the
 // apprentices working on the same process as you.
 
 import * as THREE from 'three';
@@ -27,7 +27,7 @@ const HINT = COARSE
   ? 'Tap the ground to walk, drag to look around. Tap a door to go in.'
   : 'Walk with WASD or click the ground. Drag to look around. E at a door or a bench.';
 const SCENES = ['street', ...BENCHES.map((b) => b.id)];
-const sceneName = (id) => (id === 'street' ? 'Atelier Row' : BENCHES.find((b) => b.id === id).atelier);
+const sceneName = (id) => (id === 'street' ? 'Atelier Square' : BENCHES.find((b) => b.id === id).atelier);
 
 // ---- preferences (name and apron), per viewer ------------------------------
 function loadPrefs() {
@@ -144,14 +144,15 @@ async function go(id, from) {
 
   // where you stand when you arrive
   if (id === 'street') {
+    // out of the door you came through, facing the square
     const d = from && doorOf(from);
     if (d) {
-      player.x = d.x;
-      player.z = d.z + (d.face === 0 ? 1.4 : -1.4);
-      player.r = d.face === 0 ? 0 : Math.PI;
+      player.x = d.x + Math.sin(d.face) * 1.4;
+      player.z = d.z + Math.cos(d.face) * 1.4;
+      player.r = d.face;
     } else {
       player.x = 0;
-      player.z = 1.4;
+      player.z = 6.5;
       player.r = Math.PI;
     }
   } else {
@@ -165,8 +166,9 @@ async function go(id, from) {
   cam.x = player.x;
   cam.z = player.z;
   cam.yaw = 0;
-  cam.dist = (id === 'street' ? 8 : 7.5) * (innerWidth < innerHeight ? 1.3 : 1); // phones see more of the room
-  cam.pitch = id === 'street' ? 0.8 : 0.62;
+  // the square is seen wide, so its houses frame you; rooms closer in
+  cam.dist = (id === 'street' ? 11.5 : 7.5) * (innerWidth < innerHeight ? 1.3 : 1); // phones see more
+  cam.pitch = id === 'street' ? 0.5 : 0.62;
 
   refreshSeals();
   hangOwnPrints();
@@ -445,7 +447,7 @@ $('[data-copy-room]').addEventListener('click', async () => {
   url.searchParams.delete('at');
   try {
     await navigator.clipboard.writeText(url.toString());
-    toast('Link copied. Anyone with it walks onto the same Atelier Row.');
+    toast('Link copied. Anyone with it walks into the same Atelier Square.');
   } catch (e) {
     toast(url.toString());
   }
@@ -616,7 +618,7 @@ function openMaster() {
   overlayOpen = 'master';
   const seals = ledger.sealCount();
   const say =
-    seals === 0 ? 'Nothing pressed yet. Nine ateliers on this street, and every one of them waiting. So am I.'
+    seals === 0 ? 'Nothing pressed yet. Nine ateliers round this square, and every one of them waiting. So am I.'
     : seals < 4 ? `${seals} of nine seals. A start. Do not get comfortable.`
     : seals < 9 ? `${seals} of nine. The street is beginning to know your hand.`
     : 'All nine seals. There is nothing left I can teach you, which is a lie, but a kind one.';
@@ -633,7 +635,7 @@ function openMaster() {
     <div class="seal-row">${sealRow}</div>
     <h2>${waiting.length ? (waiting.length === 1 ? 'One letter still waits' : `${waiting.length} letters still wait`) : 'Every letter answered'}</h2>
     <div class="master-letters"></div>
-    <button class="btn ghost" data-close>Back to the street</button>`;
+    <button class="btn ghost" data-close>Back to the square</button>`;
   // one letter at a time, each naming the atelier it belongs to
   readLetters(masterOverlay.querySelector('.master-letters'), waiting.map((c) => ({
     ...c, goal: `${BENCHES.find((b) => b.id === c.process).atelier}: ${c.goal}`,
@@ -1014,9 +1016,9 @@ Promise.all(SCENES.map((id) => peekCount(roomFor(id)))).then((ns) => {
   if (ns.some((n) => n == null)) return;
   const n = ns.reduce((a, b) => a + b, 0);
   entry.querySelector('.entry-count').textContent =
-    n === 0 ? 'The street is quiet right now. You would be the first in.'
-    : n === 1 ? 'One apprentice is on Atelier Row right now.'
-    : `${n} apprentices are on Atelier Row right now.`;
+    n === 0 ? 'The square is quiet right now. You would be the first in.'
+    : n === 1 ? 'One apprentice is on Atelier Square right now.'
+    : `${n} apprentices are on Atelier Square right now.`;
 });
 
 entry.querySelector('form').addEventListener('submit', (e) => {
@@ -1140,6 +1142,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get world() { return here.kit; },
     get bench() { return bench; },
     camera,
+    cam,
     get here() { return here.id; },
   };
 }

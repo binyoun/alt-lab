@@ -34,7 +34,7 @@ async function load() {
   const enter = $('[data-enter]');
   enter.href = `../?room=${room}`;
   enter.hidden = false;
-  // every atelier on the row is its own room, and so is the street
+  // every atelier on the square is its own room, and so is the square
   let rooms;
   try {
     rooms = await Promise.all(['street', ...BENCHES.map((b) => b.id)].map(async (at) => {
@@ -68,7 +68,7 @@ function showPeople(people) {
     li.append(dot, name);
     const s = document.createElement('small');
     const b = BENCHES.find((x) => x.id === p.at);
-    s.textContent = b ? `${b.atelier}${p.a ? ', at the bench' : ''}` : 'on Atelier Row';
+    s.textContent = b ? `${b.atelier}${p.a ? ', at the bench' : ''}` : 'in the square';
     li.append(s);
     ul.append(li);
   }

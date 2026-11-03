@@ -1,4 +1,4 @@
-// The nine ateliers off Atelier Row, one per process. Every room shares a
+// The nine ateliers on Atelier Square, one per process. Every room shares a
 // plan (door to the south, the bench to the north, a drying line along the
 // east wall, its history chapter on the west wall) and differs in light,
 // surfaces and the things lying about.
@@ -29,7 +29,7 @@ export function buildAtelier(scene, id) {
   const lintel = new THREE.MeshStandardMaterial({ color: style.trim || PALETTE.woodDark, flatShading: true, transparent: true });
   kit.fade(kit.box(2.2, 0.7, 0.26, lintel, 0, (wallOpts.h || 3.4) - 0.35, D, scene)); // lintel over the door
 
-  kit.exit(0, D - 0.1, Math.PI, 'Back out to Atelier Row', 'street');
+  kit.exit(0, D - 0.1, Math.PI, 'Back out to the square', 'street');
   kit.bench(b, 0, -D + 1.6, 0);
   kit.plaque(b.chapter, -W + 0.15, 0.4, Math.PI / 2);
   kit.line(W - 1.4, -D + 1.6, W - 1.4, D - 1.8, 2.25, 7);

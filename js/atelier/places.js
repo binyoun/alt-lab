@@ -1,4 +1,4 @@
-// The places on Atelier Row: the nine process ateliers and the history
+// The places on Atelier Square: the nine process ateliers and the history
 // chapters. Plain data, so pages without Three.js can use it too.
 
 export const HISTORY = [
@@ -16,7 +16,7 @@ export const HISTORY = [
   ['now', 'The return of slow light'],
 ];
 
-// The nine processes, each with its own atelier off Atelier Row.
+// The nine processes, each with its own atelier on Atelier Square.
 // `chapter` is the history chapter that hangs by its door.
 export const BENCHES = [
   { id: 'cyanotype', name: 'Cyanotype', year: 1842, props: 'iron', tint: '#274a86', chapter: '1842', atelier: 'The Sun Yard' },

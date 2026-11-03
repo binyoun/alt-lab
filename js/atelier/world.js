@@ -1,4 +1,4 @@
-// Shared building kit for Atelier Row and its nine ateliers: low-poly
+// Shared building kit for Atelier Square and its nine ateliers: low-poly
 // pieces made from primitives and canvas textures. The only pictures in
 // any room are prints the simulator itself rendered (img/print/*).
 
