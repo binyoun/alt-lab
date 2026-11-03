@@ -1,9 +1,13 @@
-// The atelier: walk the studio, step up to a bench, and the ritual opens
-// in front of you. Other apprentices in the same room appear as you work.
+// Atelier Row: walk the street, go through a door into one process's own
+// atelier, step up to its bench and the ritual opens in front of you.
+// Each atelier (and the street) is its own presence room, so you meet the
+// apprentices working on the same process as you.
 
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildWorld, BENCHES } from './world.js';
+import { BENCHES } from './world.js';
+import { buildStreet, doorOf } from './street.js';
+import { buildAtelier } from './ateliers.js';
 import { makeAvatar, INKS } from './avatar.js';
 import { connect, roomCode, peekCount } from './net.js';
 import { startRitual } from '../engine/ritual.js';
@@ -19,8 +23,10 @@ const COARSE = matchMedia('(pointer: coarse)').matches;
 const PREFS_KEY = 'altlab-atelier-v1';
 const R = 0.3; // apprentice radius
 const HINT = COARSE
-  ? 'Tap the floor to walk, drag to look around. Tap a bench to work at it.'
-  : 'Walk with WASD or tap the floor. Drag to look around. E to work at a bench.';
+  ? 'Tap the ground to walk, drag to look around. Tap a door to go in.'
+  : 'Walk with WASD or click the ground. Drag to look around. E at a door or a bench.';
+const SCENES = ['street', ...BENCHES.map((b) => b.id)];
+const sceneName = (id) => (id === 'street' ? 'Atelier Row' : BENCHES.find((b) => b.id === id).atelier);
 
 // ---- preferences (name and apron), per viewer ------------------------------
 function loadPrefs() {
@@ -51,54 +57,20 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-
 const labels = new CSS2DRenderer({ element: $('#labels') });
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color('#14120e');
-scene.fog = new THREE.Fog('#14120e', 28, 64);
-
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
 
-scene.add(new THREE.HemisphereLight('#f3dcb4', '#2b2117', 0.9));
-const sun = new THREE.DirectionalLight('#ffd9a0', 2.2);
-sun.position.set(26, 30, 14);
-sun.castShadow = true;
-sun.shadow.mapSize.set(COARSE ? 1024 : 2048, COARSE ? 1024 : 2048);
-Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 16, bottom: -16, near: 1, far: 90 });
-sun.shadow.bias = -0.0006;
-scene.add(sun);
-
-// the signs are painted in the house typeface, so wait for it
-await document.fonts.load('48px "IM Fell English"').catch(() => {});
-const world = buildWorld(scene);
-
 function resize() {
-  const w = innerWidth;
-  const h = innerHeight;
-  renderer.setSize(w, h, false);
-  labels.setSize(w, h);
-  camera.aspect = w / h;
+  renderer.setSize(innerWidth, innerHeight, false);
+  labels.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
 resize();
 
-// ---- the Master, at his desk ----------------------------------------------------
-const master = makeAvatar('#000', { master: true });
-master.root.position.set(0, 0, -8.55);
-scene.add(master.root);
-master.root.add(tag('The Master', 'tag master-tag', 2.35));
-
-// ---- the apprentice --------------------------------------------------------------
-const me = makeAvatar(prefs.ink);
-scene.add(me.root);
-const meTag = tag(prefs.name, 'tag me-tag', 2.15);
-me.root.add(meTag);
-const player = { x: 0, z: 3.5, r: Math.PI, speed: 0, path: [], pending: null, stuck: 0, activity: '' };
-
-// camera orbit
-const cam = { yaw: 0, pitch: 0.55, dist: 7.5, x: 0, z: 3.5 };
+// the signs are painted in the house typeface, so wait for it
+await document.fonts.load('48px "IM Fell English"').catch(() => {});
 
 function tag(text, cls, y) {
   const div = document.createElement('div');
@@ -109,49 +81,129 @@ function tag(text, cls, y) {
   return o;
 }
 
+// ---- the apprentice, carried from scene to scene ------------------------------------
+const me = makeAvatar(prefs.ink);
+const meTag = tag(prefs.name, 'tag me-tag', 2.15);
+me.root.add(meTag);
+const player = { x: 0, z: 0, r: Math.PI, speed: 0, path: [], pending: null, stuck: 0, activity: '' };
+const cam = { yaw: 0, pitch: 0.55, dist: 7.5, x: 0, z: 0 };
+
+// ---- scenes -----------------------------------------------------------------------------
+let here = null; // { id, scene, kit, master? }
+let entered = false;
+
+function disposeScene(scene) {
+  scene.traverse((o) => {
+    if (o.isCSS2DObject) o.element.remove();
+    if (o.geometry) o.geometry.dispose();
+    const m = o.material;
+    // shared materials from mat() stay cached; only dispose the one-offs
+    if (m && !Array.isArray(m) && (m.transparent || m.map)) {
+      if (m.map) m.map.dispose();
+      m.dispose();
+    }
+  });
+}
+
+function buildScene(id) {
+  const scene = new THREE.Scene();
+  const kit = id === 'street' ? buildStreet(scene) : buildAtelier(scene, id);
+  const s = { id, scene, kit };
+  if (id === 'street') {
+    // the Master stands outside his office
+    const door = doorOf('master');
+    const m = makeAvatar('#000', { master: true });
+    m.root.position.set(door.x + 1.9, 0, door.z + 1.0);
+    m.root.rotation.y = 0;
+    m.root.add(tag('The Master', 'tag master-tag', 2.35));
+    scene.add(m.root);
+    kit.colliders.push([door.x + 1.6, door.z + 0.7, door.x + 2.2, door.z + 1.3]);
+    s.master = m;
+  }
+  return s;
+}
+
+const fader = $('.fader');
+async function go(id, from) {
+  if (!REDUCED) {
+    fader.classList.add('on');
+    await new Promise((r) => setTimeout(r, 260));
+  }
+  if (here) {
+    here.scene.remove(me.root);
+    disposeScene(here.scene);
+  }
+  for (const pid of [...peers.keys()]) removePeer(pid);
+  lineItems.length = 0;
+  here = buildScene(id);
+  here.scene.add(me.root);
+  grid = null;
+  nearest = null;
+  promptBtn.hidden = true;
+
+  // where you stand when you arrive
+  if (id === 'street') {
+    const d = from && doorOf(from);
+    if (d) {
+      player.x = d.x;
+      player.z = d.z + (d.face === 0 ? 1.4 : -1.4);
+      player.r = d.face === 0 ? 0 : Math.PI;
+    } else {
+      player.x = 0;
+      player.z = 1.4;
+      player.r = Math.PI;
+    }
+  } else {
+    player.x = 0;
+    player.z = 3.4;
+    player.r = Math.PI;
+  }
+  player.path = [];
+  player.pending = null;
+  player.activity = '';
+  cam.x = player.x;
+  cam.z = player.z;
+  cam.yaw = 0;
+  cam.dist = (id === 'street' ? 8 : 7.5) * (innerWidth < innerHeight ? 1.3 : 1); // phones see more of the room
+  cam.pitch = id === 'street' ? 0.8 : 0.62;
+
+  refreshSeals();
+  hangOwnPrints();
+  try { history.replaceState(null, '', urlFor(id)); } catch (e) { /* file:// */ }
+  if (entered) startNet();
+  refreshCount();
+  if (!REDUCED) setTimeout(() => fader.classList.remove('on'), 60);
+}
+
+function urlFor(id) {
+  const u = new URL(location.href);
+  if (id === 'street') u.searchParams.delete('at'); else u.searchParams.set('at', id);
+  return u.toString();
+}
+
 // ---- seals on benches -----------------------------------------------------------------
 function refreshSeals() {
-  for (const it of world.interactables) {
+  if (!here) return;
+  for (const it of here.kit.interactables) {
     if (it.kind === 'bench') it.seal.visible = ledger.hasSeal(it.id);
   }
 }
-refreshSeals();
 
-// ---- the drying line -------------------------------------------------------------------
-const LINE = { z: 2.2, y: 2.35, x0: -5.6, x1: 5.6, slots: 14 };
-const line = new THREE.Group();
-scene.add(line);
-for (const x of [LINE.x0 - 0.3, LINE.x1 + 0.3]) {
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, LINE.y + 0.1, 6), new THREE.MeshStandardMaterial({ color: '#3b2618', flatShading: true }));
-  post.position.set(x, (LINE.y + 0.1) / 2, LINE.z);
-  post.castShadow = true;
-  line.add(post);
-  world.colliders.push([x - 0.15, LINE.z - 0.15, x + 0.15, LINE.z + 0.15]);
-}
-const cord = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.008, 0.008, LINE.x1 - LINE.x0 + 0.6, 4),
-  new THREE.MeshStandardMaterial({ color: '#cbbd9c' }),
-);
-cord.rotation.z = Math.PI / 2;
-cord.position.set(0, LINE.y, LINE.z);
-line.add(cord);
-
-const lineItems = []; // newest first: { key, mine, name, process, tier, img, group }
+// ---- the drying line of this atelier --------------------------------------------------------
+const lineItems = []; // newest first: { key, mine, by, name, process, tier, img, group }
 const pinMat = new THREE.MeshStandardMaterial({ color: '#b89a6a', flatShading: true });
 
 function hangPrint(item) {
-  if (lineItems.some((i) => i.key === item.key)) return;
+  const L = here && here.kit.dryingLine;
+  if (!L || lineItems.some((i) => i.key === item.key)) return;
   const tex = new THREE.Texture(item.img);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   const aspect = item.img.width / item.img.height || 1.33;
-  const w = aspect >= 1 ? 0.62 : 0.62 * aspect;
+  const w = aspect >= 1 ? 0.56 : 0.56 * aspect;
   const h = w / aspect;
   const g = new THREE.Group();
-  const sheet = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, h),
-    new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 }),
-  );
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 }));
   sheet.position.y = -h / 2 - 0.02;
   sheet.castShadow = true;
   sheet.userData.lineItem = item;
@@ -161,23 +213,24 @@ function hangPrint(item) {
     pin.position.set(px, -0.01, 0);
     g.add(pin);
   }
+  g.rotation.y = L.angle;
   item.group = g;
   item.sway = Math.random() * 6;
-  line.add(g);
+  L.group.add(g);
   lineItems.unshift(item);
-  while (lineItems.length > LINE.slots) {
-    const old = lineItems.pop();
-    line.remove(old.group);
-  }
+  while (lineItems.length > L.slots) L.group.remove(lineItems.pop().group);
   layoutLine();
 }
 
 // newest in the middle of the line, older ones spreading outward
 function layoutLine() {
-  const gap = (LINE.x1 - LINE.x0) / LINE.slots;
+  const L = here.kit.dryingLine;
+  const [x0, z0] = L.from;
+  const [x1, z1] = L.to;
   lineItems.forEach((it, i) => {
-    const side = i % 2 ? -1 : 1;
-    it.group.position.set(side * Math.ceil(i / 2) * gap, LINE.y, LINE.z);
+    const k = (i % 2 ? -1 : 1) * Math.ceil(i / 2);
+    const t = 0.5 + (k / L.slots);
+    it.group.position.set(x0 + (x1 - x0) * t, L.y, z0 + (z1 - z0) * t);
   });
 }
 
@@ -190,31 +243,38 @@ function imageFrom(src) {
   });
 }
 
-// your own most recent prints from the ledger start the line
-(async () => {
-  const own = ledger.get().prints.slice(0, 5).reverse();
+// your own recent prints of this process start the line
+async function hangOwnPrints() {
+  if (!here || here.id === 'street') return;
+  const id = here.id;
+  const own = ledger.get().prints.filter((p) => p.process === id).slice(0, 4).reverse();
   for (const p of own) {
     try {
       const img = await imageFrom(p.thumb);
+      if (here.id !== id) return;
       hangPrint({ key: 'own-' + p.ts, mine: true, name: prefs.name, process: p.process, tier: p.verdict, img });
     } catch (e) { /* a broken thumb is skipped */ }
   }
-})();
+}
 
-// ---- presence ----------------------------------------------------------------------------
-const room = roomCode();
-const peers = new Map(); // id -> { av, tagEl, x, z, r, tx, tz, tr, a, name }
+// ---- presence: one room per scene ------------------------------------------------------------
+const base = roomCode();
+const roomFor = (id) => `${base}-${id}`;
+const peers = new Map();
 let net = null;
+const hidden = new Set();
+const hiddenNames = new Set();
+const isHidden = (id, name) => hidden.has(id) || hiddenNames.has(name);
 
 function addPeer(p) {
-  if (net && p.id === net.id) return;
-  if (peers.has(p.id)) return;
+  if ((net && p.id === net.id) || peers.has(p.id) || !here) return;
   const av = makeAvatar(INKS.includes(p.ink) ? p.ink : INKS[0]);
   av.root.position.set(p.x || 0, 0, p.z || 0);
-  scene.add(av.root);
+  here.scene.add(av.root);
   const t = tag(p.name, 'tag peer', 2.15);
   t.element.title = 'Hide or show this person';
   t.element.addEventListener('click', () => askHide(p.id));
+  if (isHidden(p.id, p.name)) t.element.classList.add('muted');
   av.root.add(t);
   peers.set(p.id, { av, tagEl: t.element, x: p.x || 0, z: p.z || 0, r: p.r || 0, tx: p.x || 0, tz: p.z || 0, tr: p.r || 0, a: '', name: p.name });
   refreshCount();
@@ -222,19 +282,21 @@ function addPeer(p) {
 function removePeer(id) {
   const p = peers.get(id);
   if (!p) return;
-  scene.remove(p.av.root);
+  if (here) here.scene.remove(p.av.root);
   p.av.root.traverse((o) => { if (o.isCSS2DObject) o.element.remove(); });
   peers.delete(id);
   refreshCount();
 }
 function activityText(a) {
   const b = BENCHES.find((x) => x.id === a);
-  return b ? `at the ${b.name.toLowerCase()} bench` : '';
+  return b ? 'at the bench' : '';
 }
 
 function startNet() {
+  if (net) net.close();
+  const sceneId = here.id;
   net = connect({
-    room,
+    room: roomFor(sceneId),
     name: prefs.name,
     ink: prefs.ink,
     on: {
@@ -245,13 +307,10 @@ function startNet() {
         (m.line || []).slice().reverse().forEach(sharedPrint);
         refreshCount();
       },
-      join(m) {
-        addPeer(m);
-        feed(`${m.name} walks in.`, 'sys');
-      },
+      join(m) { addPeer(m); feed(`${m.name} comes in.`, 'sys'); },
       leave(m) {
         const p = peers.get(m.id);
-        if (p) feed(`${p.name} has gone home.`, 'sys');
+        if (p) feed(`${p.name} has gone out.`, 'sys');
         removePeer(m.id);
       },
       pos(m) {
@@ -275,7 +334,7 @@ function startNet() {
         if (isHidden(m.from, m.name)) return;
         sheets[m.process] = m;
         const bench = BENCHES.find((b) => b.id === m.process);
-        toast(`${m.name} hands you a coated ${bench.name.toLowerCase()} sheet. Take it to the ${bench.name.toLowerCase()} bench to expose it.`);
+        toast(`${m.name} hands you a coated ${bench.name.toLowerCase()} sheet. Take it to the bench to expose it.`);
         feed(`${m.name} hands you a coated ${bench.name.toLowerCase()} sheet.`, 'sys');
       },
       pairdone(m) {
@@ -305,7 +364,7 @@ function startNet() {
 // them from the drawer's specimen with its own engine.
 const configs = {};
 async function sharedPrint(it) {
-  if (isHidden(it.by, it.name)) return;
+  if (isHidden(it.by, it.name) || !here || it.process !== here.id) return;
   try {
     if (!configs[it.process]) configs[it.process] = (await import(`../processes/${it.process}.js`)).default;
     const img = renderRecipe(configs[it.process], it);
@@ -313,49 +372,37 @@ async function sharedPrint(it) {
   } catch (e) { /* a recipe this browser cannot draw is skipped */ }
 }
 
-// ---- hiding someone -------------------------------------------------------------------------
-const hidden = new Set(); // peer ids, for this visit
-const hiddenNames = new Set(); // and their names, so earlier prints go too
-const isHidden = (id, name) => hidden.has(id) || hiddenNames.has(name);
+// ---- hiding someone ------------------------------------------------------------------------------
 function askHide(id) {
   const p = peers.get(id);
   if (!p) return;
   const menu = $('.hide-menu');
-  const wasHidden = hidden.has(id);
-  menu.querySelector('p').textContent = wasHidden
+  const was = hidden.has(id);
+  menu.querySelector('p').textContent = was
     ? `Show ${p.name} again?`
     : `Hide ${p.name}? You will no longer see their messages or the prints they hang.`;
   const yes = menu.querySelector('[data-yes]');
-  yes.textContent = wasHidden ? 'Show' : 'Hide';
+  yes.textContent = was ? 'Show' : 'Hide';
   yes.onclick = () => {
-    if (wasHidden) { hidden.delete(id); hiddenNames.delete(p.name); }
-    else { hidden.add(id); hiddenNames.add(p.name); }
-    applyHidden(id);
+    if (was) { hidden.delete(id); hiddenNames.delete(p.name); } else { hidden.add(id); hiddenNames.add(p.name); }
+    p.tagEl.classList.toggle('muted', !was);
+    if (!was) {
+      for (let i = lineItems.length - 1; i >= 0; i--) {
+        const it = lineItems[i];
+        if (!it.mine && (it.by === id || it.name === p.name)) {
+          here.kit.dryingLine.group.remove(it.group);
+          lineItems.splice(i, 1);
+        }
+      }
+      layoutLine();
+    }
     menu.hidden = true;
   };
   menu.hidden = false;
 }
 $('.hide-menu [data-no]').addEventListener('click', () => { $('.hide-menu').hidden = true; });
-function applyHidden(id) {
-  const p = peers.get(id);
-  const off = hidden.has(id);
-  if (p) {
-    p.tagEl.classList.toggle('muted', off);
-    p.av.root.traverse((o) => { if (o.isCSS2DObject && o.element.classList.contains('bubble')) o.element.hidden = off; });
-  }
-  if (off) {
-    for (let i = lineItems.length - 1; i >= 0; i--) {
-      if (!lineItems[i].mine && (lineItems[i].by === id || (p && lineItems[i].name === p.name))) {
-        line.remove(lineItems[i].group);
-        lineItems.splice(i, 1);
-      }
-    }
-    layoutLine();
-  }
-}
 
 // ---- HUD -----------------------------------------------------------------------------------
-const hud = $('.hud');
 const promptBtn = $('.prompt');
 const statusEl = $('.room-status');
 let netStatus = 'solo';
@@ -366,31 +413,30 @@ function setStatus(s) {
 }
 function refreshCount() {
   const n = peers.size + 1;
-  if (netStatus === 'online') {
-    statusEl.textContent = `Room ${room} · ${n === 1 ? 'only you here' : `${n} apprentices here`}`;
-  } else if (netStatus === 'offline') {
-    statusEl.textContent = `Room ${room} · reconnecting`;
-  } else {
-    statusEl.textContent = 'Working alone';
-  }
+  const where = here ? sceneName(here.id) : '';
+  if (netStatus === 'online') statusEl.textContent = `${where} · ${n === 1 ? 'only you here' : `${n} here`}`;
+  else if (netStatus === 'offline') statusEl.textContent = `${where} · reconnecting`;
+  else statusEl.textContent = where;
   $('.room-tools').hidden = netStatus === 'solo';
+  $('[data-room-code]').textContent = base === 'commons' ? 'Open atelier' : `Class ${base.replace(/^class-/, '')}`;
 }
 
 $('[data-copy-room]').addEventListener('click', async () => {
   const url = new URL(location.href);
-  url.searchParams.set('room', room);
+  url.searchParams.set('room', base);
+  url.searchParams.delete('at');
   try {
     await navigator.clipboard.writeText(url.toString());
-    toast('Link to this room copied. Anyone with it walks into the same atelier.');
+    toast('Link copied. Anyone with it walks onto the same Atelier Row.');
   } catch (e) {
     toast(url.toString());
   }
 });
-$('[data-line-link]').href = `line/?room=${room}`;
+$('[data-line-link]').href = `line/?room=${base}`;
 $('[data-new-room]').addEventListener('click', () => {
-  const code = 'class-' + Math.random().toString(36).slice(2, 6);
   const url = new URL(location.href);
-  url.searchParams.set('room', code);
+  url.searchParams.set('room', 'class-' + Math.random().toString(36).slice(2, 6));
+  url.searchParams.delete('at');
   location.href = url.toString();
 });
 
@@ -491,7 +537,7 @@ function pressed(p) {
   if (p.partner && net && net.online) net.pairdone(p.partner.id, p.process, p.skipped ? 'thin' : p.tier);
   if (p.specimen && p.recipe && !p.skipped && net && net.online) {
     net.hang({ process: p.process, tier: p.tier, ...p.recipe, ...(p.partner ? { with: p.partner.id } : {}) });
-    toast('Hung on the shared line for everyone in the room.');
+    toast('Hung on the line for everyone in this atelier.');
   } else if (net && net.online) {
     toast(p.specimen ? 'Hung on your line. Prints the studio made for you stay private.' : 'Hung on your line. Prints of your own photographs stay on your device.');
   }
@@ -508,9 +554,9 @@ function openMaster() {
   overlayOpen = 'master';
   const seals = ledger.sealCount();
   const say =
-    seals === 0 ? 'Nothing pressed yet. The benches are waiting, and so am I.'
+    seals === 0 ? 'Nothing pressed yet. Nine ateliers on this street, and every one of them waiting. So am I.'
     : seals < 4 ? `${seals} of nine seals. A start. Do not get comfortable.`
-    : seals < 9 ? `${seals} of nine. The studio is beginning to know your hand.`
+    : seals < 9 ? `${seals} of nine. The street is beginning to know your hand.`
     : 'All nine seals. There is nothing left I can teach you, which is a lie, but a kind one.';
   const sealRow = BENCHES.map((b) => {
     const has = ledger.hasSeal(b.id);
@@ -525,10 +571,10 @@ function openMaster() {
     <div class="seal-row">${sealRow}</div>
     <h2>${waiting.length ? (waiting.length === 1 ? 'One letter still waits' : `${waiting.length} letters still wait`) : 'Every letter answered'}</h2>
     <div class="master-letters"></div>
-    <button class="btn ghost" data-close>Back to the studio</button>`;
-  // one letter at a time, each naming the bench it belongs to
+    <button class="btn ghost" data-close>Back to the street</button>`;
+  // one letter at a time, each naming the atelier it belongs to
   readLetters(masterOverlay.querySelector('.master-letters'), waiting.map((c) => ({
-    ...c, goal: `${PROCESSES[c.process].name}: ${c.goal}`,
+    ...c, goal: `${BENCHES.find((b) => b.id === c.process).atelier}: ${c.goal}`,
   })), { onTurn: () => sound.flip() });
   masterOverlay.hidden = false;
   document.body.classList.add('in-overlay');
@@ -555,14 +601,16 @@ masterOverlay.addEventListener('click', (e) => { if (e.target.closest('[data-clo
 
 function interact(it) {
   if (!it) return;
-  face(it.face);
+  player.r = it.face + Math.PI;
   if (it.kind === 'bench') openBench(it.id);
-  else if (it.kind === 'master') openMaster();
-  else if (it.kind === 'ledger') openPage('ledger/');
   else if (it.kind === 'history') openPage(`history/#ch-${it.id}`);
-}
-function face(f) {
-  player.r = f + Math.PI;
+  else if (it.kind === 'exit') {
+    if (it.id === 'street') go('street', here.id);
+    else if (it.id === 'master') openMaster();
+    else if (it.id === 'history') openPage('history/');
+    else if (it.id === 'ledger') openPage('ledger/');
+    else go(it.id, 'street');
+  }
 }
 
 // ---- input ------------------------------------------------------------------------------------
@@ -575,8 +623,8 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if ((k === 'e' || k === 'enter') && nearest) { interact(nearest); return; }
   if (k === 't' || k === 'enter') { e.preventDefault(); chatInput.focus(); return; }
-  keys.add(e.key.toLowerCase());
-  if (e.key.startsWith('Arrow')) e.preventDefault();
+  keys.add(k);
+  if (k.startsWith('arrow')) e.preventDefault();
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -615,13 +663,14 @@ function tap(cx, cy) {
   const r = canvas.getBoundingClientRect();
   ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const targets = [world.ground, line, ...world.interactables.map((i) => i.mesh)];
-  const hits = ray.intersectObjects(targets, true);
-  for (const h of hits) {
+  const k = here.kit;
+  const targets = [k.ground, ...k.interactables.map((i) => i.mesh)];
+  if (k.dryingLine) targets.push(k.dryingLine.group);
+  for (const h of ray.intersectObjects(targets, true)) {
     if (h.object.userData.lineItem) { showPrint(h.object.userData.lineItem); return; }
-    const it = world.interactables.find((i) => isChild(h.object, i.mesh));
+    const it = k.interactables.find((i) => isChild(h.object, i.mesh));
     if (it) { walkTo(it.stand[0], it.stand[1], it); return; }
-    if (isChild(h.object, world.ground)) { walkTo(h.point.x, h.point.z, null); return; }
+    if (isChild(h.object, k.ground)) { walkTo(h.point.x, h.point.z, null); return; }
   }
 }
 function isChild(o, parent) {
@@ -638,39 +687,52 @@ function showPrint(item) {
 }
 $('.print-card').addEventListener('click', () => { $('.print-card').hidden = true; });
 
-// ---- movement ------------------------------------------------------------------------------------
-// Walking by tap: A* over a quarter-metre grid of the floor, then the path
-// is pulled taut so apprentices walk straight lines, not staircases.
-const GRID = { x0: -24, z0: -9, cell: 0.25, w: 192, h: 72 };
+// ---- walking: A* over a quarter-metre grid of this scene, pulled taut ---------------------------
+const CELL = 0.25;
 let grid = null;
+let G = null; // { x0, z0, w, h }
+
+function blocked(x, z, rad = R) {
+  for (const [x0, z0, x1, z1] of here.kit.colliders) {
+    const cx = Math.max(x0, Math.min(x, x1));
+    const cz = Math.max(z0, Math.min(z, z1));
+    if ((x - cx) ** 2 + (z - cz) ** 2 < rad * rad) return true;
+  }
+  const [bx0, bz0, bx1, bz1] = here.kit.bounds;
+  return x < bx0 || x > bx1 || z < bz0 || z > bz1;
+}
+
 function buildGrid() {
-  grid = new Uint8Array(GRID.w * GRID.h);
-  for (let j = 0; j < GRID.h; j++) {
-    for (let i = 0; i < GRID.w; i++) {
-      const x = GRID.x0 + (i + 0.5) * GRID.cell;
-      const z = GRID.z0 + (j + 0.5) * GRID.cell;
-      grid[j * GRID.w + i] = blocked(x, z, R + 0.08) ? 1 : 0;
-    }
+  const [x0, z0, x1, z1] = here.kit.bounds;
+  G = { x0, z0, w: Math.ceil((x1 - x0) / CELL), h: Math.ceil((z1 - z0) / CELL) };
+  grid = new Uint8Array(G.w * G.h);
+  for (let j = 0; j < G.h; j++) for (let i = 0; i < G.w; i++) {
+    grid[j * G.w + i] = blocked(G.x0 + (i + 0.5) * CELL, G.z0 + (j + 0.5) * CELL, R + 0.08) ? 1 : 0;
   }
 }
 const cellOf = (x, z) => [
-  Math.min(GRID.w - 1, Math.max(0, Math.floor((x - GRID.x0) / GRID.cell))),
-  Math.min(GRID.h - 1, Math.max(0, Math.floor((z - GRID.z0) / GRID.cell))),
+  Math.min(G.w - 1, Math.max(0, Math.floor((x - G.x0) / CELL))),
+  Math.min(G.h - 1, Math.max(0, Math.floor((z - G.z0) / CELL))),
 ];
-const centre = (i, j) => [GRID.x0 + (i + 0.5) * GRID.cell, GRID.z0 + (j + 0.5) * GRID.cell];
+const centre = (i, j) => [G.x0 + (i + 0.5) * CELL, G.z0 + (j + 0.5) * CELL];
 
 function nearestFree(i, j) {
-  if (!grid[j * GRID.w + i]) return [i, j];
-  for (let r = 1; r < 12; r++) {
-    for (let dj = -r; dj <= r; dj++) {
-      for (let di = -r; di <= r; di++) {
-        const a = i + di;
-        const b = j + dj;
-        if (a >= 0 && b >= 0 && a < GRID.w && b < GRID.h && !grid[b * GRID.w + a]) return [a, b];
-      }
-    }
+  if (!grid[j * G.w + i]) return [i, j];
+  for (let r = 1; r < 12; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    const a = i + di;
+    const b = j + dj;
+    if (a >= 0 && b >= 0 && a < G.w && b < G.h && !grid[b * G.w + a]) return [a, b];
   }
   return null;
+}
+
+function clearLine([ax, az], [bx, bz]) {
+  const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 0.12);
+  for (let k = 1; k <= n; k++) {
+    const [i, j] = cellOf(ax + (bx - ax) * (k / n), az + (bz - az) * (k / n));
+    if (grid[j * G.w + i]) return false;
+  }
+  return true;
 }
 
 function findPath(fx, fz, tx, tz) {
@@ -678,20 +740,19 @@ function findPath(fx, fz, tx, tz) {
   const s = nearestFree(...cellOf(fx, fz));
   const g = nearestFree(...cellOf(tx, tz));
   if (!s || !g) return null;
-  const W = GRID.w;
+  const W = G.w;
   const start = s[1] * W + s[0];
   const goal = g[1] * W + g[0];
   const cost = new Float32Array(grid.length).fill(Infinity);
   const from = new Int32Array(grid.length).fill(-1);
-  const open = [start]; // small binary heap keyed on f
   const f = new Float32Array(grid.length);
   const h = (n) => Math.hypot((n % W) - g[0], Math.floor(n / W) - g[1]);
+  const open = [start];
   cost[start] = 0;
   f[start] = h(start);
   const push = (n) => {
     open.push(n);
-    let k = open.length - 1;
-    while (k > 0) {
+    for (let k = open.length - 1; k > 0;) {
       const p = (k - 1) >> 1;
       if (f[open[p]] <= f[open[k]]) break;
       [open[p], open[k]] = [open[k], open[p]];
@@ -703,13 +764,11 @@ function findPath(fx, fz, tx, tz) {
     const last = open.pop();
     if (open.length) {
       open[0] = last;
-      let k = 0;
-      for (;;) {
+      for (let k = 0; ;) {
         const l = 2 * k + 1;
-        const r = l + 1;
         let m = k;
         if (l < open.length && f[open[l]] < f[open[m]]) m = l;
-        if (r < open.length && f[open[r]] < f[open[m]]) m = r;
+        if (l + 1 < open.length && f[open[l + 1]] < f[open[m]]) m = l + 1;
         if (m === k) break;
         [open[m], open[k]] = [open[k], open[m]];
         k = m;
@@ -722,52 +781,29 @@ function findPath(fx, fz, tx, tz) {
     if (n === goal) break;
     const i = n % W;
     const j = Math.floor(n / W);
-    for (let dj = -1; dj <= 1; dj++) {
-      for (let di = -1; di <= 1; di++) {
-        if (!di && !dj) continue;
-        const a = i + di;
-        const b = j + dj;
-        if (a < 0 || b < 0 || a >= W || b >= GRID.h) continue;
-        const m = b * W + a;
-        if (grid[m]) continue;
-        if (di && dj && (grid[j * W + a] || grid[b * W + i])) continue; // no corner cutting
-        const c = cost[n] + (di && dj ? Math.SQRT2 : 1);
-        if (c < cost[m]) {
-          cost[m] = c;
-          from[m] = n;
-          f[m] = c + h(m);
-          push(m);
-        }
-      }
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue;
+      const a = i + di;
+      const b = j + dj;
+      if (a < 0 || b < 0 || a >= W || b >= G.h) continue;
+      const m = b * W + a;
+      if (grid[m] || (di && dj && (grid[j * W + a] || grid[b * W + i]))) continue;
+      const c = cost[n] + (di && dj ? Math.SQRT2 : 1);
+      if (c < cost[m]) { cost[m] = c; from[m] = n; f[m] = c + h(m); push(m); }
     }
   }
   if (from[goal] === -1 && goal !== start) return null;
-  const cells = [];
-  for (let n = goal; n !== -1; n = from[n]) cells.push(n);
-  cells.reverse();
-  // pull taut: keep only the points needed to stay in clear line of sight
-  const pts = cells.map((n) => centre(n % W, Math.floor(n / W)));
+  const pts = [];
+  for (let n = goal; n !== -1; n = from[n]) pts.push(centre(n % W, Math.floor(n / W)));
+  pts.reverse();
   const out = [];
   let anchor = [fx, fz];
   for (let k = 1; k < pts.length; k++) {
-    if (!clearLine(anchor, pts[k])) {
-      out.push(pts[k - 1]);
-      anchor = pts[k - 1];
-    }
+    if (!clearLine(anchor, pts[k])) { out.push(pts[k - 1]); anchor = pts[k - 1]; }
   }
-  out.push(grid[cellOf(tx, tz)[1] * W + cellOf(tx, tz)[0]] ? pts[pts.length - 1] : [tx, tz]);
+  const [ti, tj] = cellOf(tx, tz);
+  out.push(grid[tj * W + ti] ? pts[pts.length - 1] : [tx, tz]);
   return out;
-}
-
-function clearLine([ax, az], [bx, bz]) {
-  const d = Math.hypot(bx - ax, bz - az);
-  const n = Math.ceil(d / 0.12);
-  for (let k = 1; k <= n; k++) {
-    const t = k / n;
-    const [i, j] = cellOf(ax + (bx - ax) * t, az + (bz - az) * t);
-    if (grid[j * GRID.w + i]) return false;
-  }
-  return true;
 }
 
 function walkTo(x, z, pending) {
@@ -775,15 +811,6 @@ function walkTo(x, z, pending) {
   player.path = path || [];
   player.pending = path ? pending : null;
   player.stuck = 0;
-}
-
-function blocked(x, z, rad = R) {
-  for (const [x0, z0, x1, z1] of world.colliders) {
-    const cx = Math.max(x0, Math.min(x, x1));
-    const cz = Math.max(z0, Math.min(z, z1));
-    if ((x - cx) ** 2 + (z - cz) ** 2 < rad * rad) return true;
-  }
-  return x < -23.7 || x > 23.7 || z < -8.7 || z > 8.7;
 }
 
 function step(dt) {
@@ -801,9 +828,7 @@ function step(dt) {
     mz = -cy * fw - sy * rt;
   } else if (player.path.length) {
     const [tx, tz] = player.path[0];
-    const dx = tx - player.x;
-    const dz = tz - player.z;
-    const d = Math.hypot(dx, dz);
+    const d = Math.hypot(tx - player.x, tz - player.z);
     if (d < 0.12) {
       player.path.shift();
       if (!player.path.length && player.pending) {
@@ -812,8 +837,8 @@ function step(dt) {
         interact(it);
       }
     } else {
-      mx = dx / d;
-      mz = dz / d;
+      mx = (tx - player.x) / d;
+      mz = (tz - player.z) / d;
     }
   }
   const len = Math.hypot(mx, mz);
@@ -831,17 +856,13 @@ function step(dt) {
     if (player.path.length && moved < v * 0.2) {
       player.stuck += dt;
       if (player.stuck > 0.6) {
-        // close enough to the bench to work at it anyway?
         const it = player.pending;
         player.path = [];
         player.pending = null;
         if (it && Math.hypot(it.stand[0] - player.x, it.stand[1] - player.z) < 1.8) interact(it);
       }
-    } else {
-      player.stuck = 0;
-    }
-    const want = Math.atan2(mx, mz);
-    let d = want - player.r;
+    } else player.stuck = 0;
+    let d = Math.atan2(mx, mz) - player.r;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     player.r += d * Math.min(1, dt * 10);
   }
@@ -852,25 +873,49 @@ function step(dt) {
 let nearest = null;
 function findNearest() {
   let best = null;
-  let bd = 1.7;
-  for (const it of world.interactables) {
+  let bd = 1.6;
+  for (const it of here.kit.interactables) {
     const d = Math.hypot(it.stand[0] - player.x, it.stand[1] - player.z);
     if (d < bd) { bd = d; best = it; }
   }
   if (best !== nearest) {
     nearest = best;
-    if (best) {
-      promptBtn.querySelector('span').textContent = best.label;
-      promptBtn.hidden = false;
-    } else {
-      promptBtn.hidden = true;
-    }
+    promptBtn.hidden = !best;
+    if (best) promptBtn.querySelector('span').textContent = best.label;
   }
 }
 promptBtn.addEventListener('click', () => nearest && interact(nearest));
 
+// ---- walls step aside for the camera -------------------------------------------------------------------
+const toPlayer = new THREE.Vector3();
+const fadeRay = new THREE.Raycaster();
+function fadeWalls(dt) {
+  const fades = here.kit.fades;
+  if (!fades.length) return;
+  const target = new THREE.Vector3(player.x, 1.0, player.z);
+  toPlayer.subVectors(target, camera.position);
+  const dist = toPlayer.length();
+  fadeRay.set(camera.position, toPlayer.normalize());
+  fadeRay.far = dist;
+  const hit = new Set(fadeRay.intersectObjects(fades, false).map((h) => h.object));
+  for (const w of fades) {
+    // a wall fades when it is in the line of sight, or simply stands
+    // between the camera and the apprentice: a cutaway, like a doll's house
+    const pl = w.userData.plane;
+    const between = pl && (camera.position[pl.axis] - pl.at) * ((pl.axis === 'x' ? player.x : player.z) - pl.at) < 0;
+    const full = w.userData.baseOpacity ?? 1;
+    const want = hit.has(w) || between ? Math.min(full, 0.1) : full;
+    const m = w.material;
+    m.opacity += (want - m.opacity) * Math.min(1, dt * 8);
+    m.depthWrite = m.opacity > 0.95;
+    if (w.userData.partner) {
+      w.userData.partner.material.opacity = m.opacity;
+      w.userData.partner.material.depthWrite = m.depthWrite;
+    }
+  }
+}
+
 // ---- entry ------------------------------------------------------------------------------------------
-let entered = false;
 const entry = $('.entry');
 const nameInput = entry.querySelector('input[name=name]');
 nameInput.value = prefs.name;
@@ -888,12 +933,13 @@ INKS.forEach((ink) => {
   });
   swatches.appendChild(b);
 });
-peekCount(room).then((n) => {
-  if (n == null) return;
+Promise.all(SCENES.map((id) => peekCount(roomFor(id)))).then((ns) => {
+  if (ns.some((n) => n == null)) return;
+  const n = ns.reduce((a, b) => a + b, 0);
   entry.querySelector('.entry-count').textContent =
-    n === 0 ? 'The atelier is empty right now. You would be the first in.'
-    : n === 1 ? 'One apprentice is working inside right now.'
-    : `${n} apprentices are working inside right now.`;
+    n === 0 ? 'The street is quiet right now. You would be the first in.'
+    : n === 1 ? 'One apprentice is on Atelier Row right now.'
+    : `${n} apprentices are on Atelier Row right now.`;
 });
 
 entry.querySelector('form').addEventListener('submit', (e) => {
@@ -903,7 +949,7 @@ entry.querySelector('form').addEventListener('submit', (e) => {
   savePrefs(prefs);
   meTag.element.textContent = prefs.name;
   entry.hidden = true;
-  hud.hidden = false;
+  $('.hud').hidden = false;
   entered = true;
   ledger.begin();
   mountSoundToggle();
@@ -929,12 +975,13 @@ function welcome() {
 // ---- loop ---------------------------------------------------------------------------------------------
 const clock = new THREE.Clock();
 let sendTimer = 0;
-const tmp = new THREE.Vector3();
+const look = new THREE.Vector3();
 
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
   const t = clock.elapsedTime;
+  if (!here) return;
   if (overlayOpen === 'bench' || overlayOpen === 'page') {
     // the ritual has the GPU; keep presence alive but skip drawing
     if (net) net.pos(player.x, player.z, player.r, player.activity);
@@ -946,7 +993,7 @@ function frame() {
   me.root.position.set(player.x, 0, player.z);
   me.root.rotation.y = player.r;
   me.animate(dt, player.speed, t);
-  master.animate(dt, 0, t + 1.3);
+  if (here.master) here.master.animate(dt, 0, t + 1.3);
   if (entered) findNearest();
 
   for (const p of peers.values()) {
@@ -963,17 +1010,17 @@ function frame() {
     p.av.animate(dt, Math.hypot(p.x - ox, p.z - oz) / dt, t);
   }
 
-  for (const l of world.lamps) l.light.intensity = l.base * (0.94 + Math.sin(t * 7 + l.phase) * 0.03 + Math.sin(t * 13.1 + l.phase) * 0.03);
-  if (!REDUCED) for (const it of lineItems) it.group.rotation.x = Math.sin(t * 1.3 + it.sway) * 0.06;
+  for (const l of here.kit.lamps) l.light.intensity = l.base * (0.94 + Math.sin(t * 7 + l.phase) * 0.03 + Math.sin(t * 13.1 + l.phase) * 0.03);
+  if (!REDUCED) for (const it of lineItems) it.group.children[0].rotation.x = Math.sin(t * 1.3 + it.sway) * 0.06;
 
-  // camera
   if (!entered && !REDUCED) cam.yaw += dt * 0.06;
   const k = 1 - Math.exp(-dt * 6);
   cam.x += (player.x - cam.x) * k;
   cam.z += (player.z - cam.z) * k;
   const cp = Math.cos(cam.pitch) * cam.dist;
   camera.position.set(cam.x + Math.sin(cam.yaw) * cp, 1.2 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp);
-  camera.lookAt(tmp.set(cam.x, 1.2, cam.z));
+  camera.lookAt(look.set(cam.x, 1.2, cam.z));
+  fadeWalls(dt);
 
   if (net && entered) {
     sendTimer += dt;
@@ -983,14 +1030,20 @@ function frame() {
     }
   }
 
-  renderer.render(scene, camera);
-  labels.render(scene, camera);
+  renderer.render(here.scene, camera);
+  labels.render(here.scene, camera);
 }
 
 // a handle for the headless walkthrough test (?debug)
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__atelier = { player, world, walkTo, lineItems, peers };
+  window.__atelier = {
+    player, walkTo, lineItems, peers, go, interact,
+    get world() { return here.kit; },
+    get here() { return here.id; },
+  };
 }
 
+const startAt = new URLSearchParams(location.search).get('at');
+await go(SCENES.includes(startAt) ? startAt : 'street', null);
 document.body.classList.add('ready');
 frame();

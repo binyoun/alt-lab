@@ -12,7 +12,8 @@ export function serverUrl() {
 
 export function roomCode() {
   const raw = new URLSearchParams(location.search).get('room') || 'commons';
-  return raw.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24) || 'commons';
+  // short, so "<room>-<atelier>" stays within the server's 24 characters
+  return raw.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 10) || 'commons';
 }
 
 export async function peekCount(room) {

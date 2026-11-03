@@ -4,6 +4,7 @@
 import { serverUrl } from './atelier/net.js';
 import { renderRecipe } from './engine/sample.js';
 import { PROCESSES } from './content/commissions.js';
+import { BENCHES } from './atelier/places.js';
 
 const $ = (s) => document.querySelector(s);
 const form = $('.room-form');
@@ -24,7 +25,7 @@ form.addEventListener('submit', (e) => {
 });
 
 function clean(v) {
-  return v.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
+  return v.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 10);
 }
 
 async function load() {
@@ -33,16 +34,19 @@ async function load() {
   const enter = $('[data-enter]');
   enter.href = `../?room=${room}`;
   enter.hidden = false;
-  let data;
+  // every atelier on the row is its own room, and so is the street
+  let rooms;
   try {
-    const r = await fetch(serverUrl().replace(/^ws/, 'http') + `/room/${room}/line`);
-    data = await r.json();
+    rooms = await Promise.all(['street', ...BENCHES.map((b) => b.id)].map(async (at) => {
+      const r = await fetch(serverUrl().replace(/^ws/, 'http') + `/room/${room}-${at}/line`);
+      return { at, ...(await r.json()) };
+    }));
   } catch (e) {
     $('.grid').innerHTML = '<p class="none">The atelier server could not be reached.</p>';
     return;
   }
-  showPeople(data.people);
-  items = data.line;
+  showPeople(rooms.flatMap((r) => r.people.map((p) => ({ ...p, at: r.at }))));
+  items = rooms.flatMap((r) => r.line).sort((a, b) => b.ts - a.ts);
   await showLine(items);
   $('.updated').textContent = `Last updated ${new Date().toLocaleTimeString()}.`;
 }
@@ -62,11 +66,10 @@ function showPeople(people) {
     const name = document.createElement('span');
     name.textContent = p.name;
     li.append(dot, name);
-    if (p.a && PROCESSES[p.a]) {
-      const s = document.createElement('small');
-      s.textContent = `at the ${PROCESSES[p.a].name.toLowerCase()} bench`;
-      li.append(s);
-    }
+    const s = document.createElement('small');
+    const b = BENCHES.find((x) => x.id === p.at);
+    s.textContent = b ? `${b.atelier}${p.a ? ', at the bench' : ''}` : 'on Atelier Row';
+    li.append(s);
     ul.append(li);
   }
 }

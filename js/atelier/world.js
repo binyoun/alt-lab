@@ -1,40 +1,13 @@
-// The atelier as a low-poly diorama: a lamp-lit hall with a sunlit
-// courtyard to the east and a garden to the west. Everything here is built
-// from primitives and canvas textures; the only pictures in the room are
-// prints the simulator itself rendered (img/print/*).
+// Shared building kit for Atelier Row and its nine ateliers: low-poly
+// pieces made from primitives and canvas textures. The only pictures in
+// any room are prints the simulator itself rendered (img/print/*).
 
 import * as THREE from 'three';
 
-export const HISTORY = [
-  ['1826', 'The first fixed image'],
-  ['1839', 'The daguerreotype'],
-  ['1840', 'The negative, and the salt print'],
-  ['1842', 'Iron, blue, and the garden'],
-  ['1850', 'Albumen, and the family album'],
-  ['1851', 'Wet collodion'],
-  ['1873', 'Platinum, and the noble prints'],
-  ['1888', 'You press the button'],
-  ['1907', 'Colour arrives'],
-  ['1925', 'Small cameras, instant pictures'],
-  ['1975', 'The sensor'],
-  ['now', 'The return of slow light'],
-];
+export { HISTORY, BENCHES } from './places.js';
+import { HISTORY, BENCHES } from './places.js';
 
-// Benches. `at` is the bench centre, `face` the direction the worker
-// faces (radians, 0 = toward -z). The worker stands 1.1 m in front.
-export const BENCHES = [
-  { id: 'cyanotype', name: 'Cyanotype', year: 1842, at: [17, -5.6], face: -Math.PI / 2, props: 'iron', tint: '#274a86' },
-  { id: 'vandyke', name: 'Van Dyke brown', year: 1895, at: [21, 0], face: -Math.PI / 2, props: 'iron', tint: '#4a2c14' },
-  { id: 'platinum', name: 'Platinum', year: 1873, at: [17, 5.6], face: -Math.PI / 2, props: 'iron', tint: '#3d3d3f' },
-  { id: 'daguerreotype', name: 'Daguerreotype', year: 1839, at: [-9, -7.9], face: 0, props: 'fuming', tint: '#6b7076' },
-  { id: 'tintype', name: 'Tintype', year: 1856, at: [-5, -7.9], face: 0, props: 'camera', tint: '#26262a' },
-  { id: 'saltprint', name: 'Salt print', year: 1840, at: [-9, 7.9], face: Math.PI, props: 'salt', tint: '#5e3a22' },
-  { id: 'albumen', name: 'Albumen print', year: 1850, at: [-5, 7.9], face: Math.PI, props: 'egg', tint: '#553024' },
-  { id: 'anthotype', name: 'Anthotype', year: 1842, at: [-19, -4.5], face: Math.PI / 2, props: 'berry', tint: '#7a2547' },
-  { id: 'lumen', name: 'Lumen print', year: 1840, at: [-19, 4.5], face: Math.PI / 2, props: 'leaf', tint: '#8a5a4a' },
-];
-
-const PALETTE = {
+export const PALETTE = {
   plank: '#6b4a32',
   plankDark: '#4a3322',
   plaster: '#cdbfa6',
@@ -49,7 +22,7 @@ const PALETTE = {
 };
 
 const mats = new Map();
-function mat(color, opts = {}) {
+export function mat(color, opts = {}) {
   const key = color + JSON.stringify(opts);
   if (!mats.has(key)) {
     mats.set(key, new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85, ...opts }));
@@ -57,7 +30,7 @@ function mat(color, opts = {}) {
   return mats.get(key);
 }
 
-function canvasTexture(w, h, draw, repeat) {
+export function canvasTexture(w, h, draw, repeat) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -72,12 +45,12 @@ function canvasTexture(w, h, draw, repeat) {
   return t;
 }
 
-function rand(seed) {
+export function rand(seed) {
   let s = seed;
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
-function planks(ctx, w, h) {
+export function planks(ctx, w, h) {
   const r = rand(7);
   const rows = 8;
   for (let i = 0; i < rows; i++) {
@@ -96,7 +69,7 @@ function planks(ctx, w, h) {
   }
 }
 
-function flagstones(ctx, w, h) {
+export function flagstones(ctx, w, h) {
   const r = rand(11);
   ctx.fillStyle = '#5c574d';
   ctx.fillRect(0, 0, w, h);
@@ -110,7 +83,7 @@ function flagstones(ctx, w, h) {
   }
 }
 
-function grass(ctx, w, h) {
+export function grass(ctx, w, h) {
   const r = rand(5);
   ctx.fillStyle = PALETTE.grass;
   ctx.fillRect(0, 0, w, h);
@@ -142,272 +115,293 @@ export function textSign(lines, { w = 512, h = 160, bg = PALETTE.paper, ink = '#
 
 // ---------------------------------------------------------------------------
 
-export function buildWorld(scene) {
-  const colliders = []; // [x0, z0, x1, z1]
-  const interactables = []; // { kind, id, label, stand:[x,z], face, mesh }
-  const lamps = [];
-  const loader = new THREE.TextureLoader();
+export function cobbles(ctx, w, h) {
+  const r = rand(19);
+  ctx.fillStyle = '#2e2b27';
+  ctx.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 16) {
+    for (let x = (y / 16) % 2 ? -8 : 0; x < w; x += 16) {
+      ctx.fillStyle = `hsl(30, 6%, ${30 + r() * 14}%)`;
+      ctx.beginPath();
+      ctx.ellipse(x + 8, y + 8, 7, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
 
-  function box(w, h, d, material, x, y, z, parent = scene, { collide = false, shadow = true } = {}) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+export function bricks(ctx, w, h) {
+  const r = rand(23);
+  ctx.fillStyle = '#b9ab92';
+  ctx.fillRect(0, 0, w, h);
+  for (let y = 0, row = 0; y < h; y += 16, row++) {
+    for (let x = row % 2 ? -16 : 0; x < w; x += 32) {
+      ctx.fillStyle = `hsl(${12 + r() * 10}, 38%, ${36 + r() * 10}%)`;
+      ctx.fillRect(x + 1, y + 1, 30, 14);
+    }
+  }
+}
+
+export function wallpaper(color, motif) {
+  return (ctx, w, h) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = motif;
+    for (let y = 8; y < h; y += 32) {
+      for (let x = (y / 32) % 2 ? 24 : 8; x < w; x += 32) {
+        ctx.beginPath();
+        ctx.ellipse(x, y, 3, 6, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  };
+}
+
+export function checker(a, b) {
+  return (ctx, w, h) => {
+    const n = 8;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      ctx.fillStyle = (i + j) % 2 ? a : b;
+      ctx.fillRect((i * w) / n, (j * h) / n, w / n, h / n);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// A kit binds the builders to one scene and collects what main.js needs:
+// colliders for walking, things to interact with, walls that fade when
+// they stand between the camera and the apprentice, and flickering lamps.
+
+export function makeKit(scene, bounds) {
+  const kit = {
+    scene,
+    bounds, // [x0, z0, x1, z1] the walkable rectangle
+    colliders: [],
+    interactables: [],
+    lamps: [],
+    fades: [],
+    ground: new THREE.Group(),
+    loader: new THREE.TextureLoader(),
+  };
+  scene.add(kit.ground);
+
+  kit.box = (w, h, d, material, x, y, z, parent = scene, { collide = false, shadow = true } = {}) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof material === 'string' ? mat(material) : material);
     m.position.set(x, y, z);
     m.castShadow = shadow;
     m.receiveShadow = true;
     parent.add(m);
-    if (collide) colliders.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]);
+    if (collide) kit.colliders.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]);
     return m;
-  }
-  function cyl(rt, rb, h, material, x, y, z, parent = scene, seg = 10) {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
+  };
+  kit.cyl = (rt, rb, h, material, x, y, z, parent = scene, seg = 10) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), typeof material === 'string' ? mat(material) : material);
     m.position.set(x, y, z);
     m.castShadow = true;
     m.receiveShadow = true;
     parent.add(m);
     return m;
-  }
-
-  // ---- ground ----------------------------------------------------------
-  const ground = new THREE.Group();
-  ground.name = 'ground';
-  scene.add(ground);
-  const floor = (w, d, x, z, tex) => {
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, d),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }),
-    );
+  };
+  kit.floor = (w, d, x, z, tex, y = 0) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
     m.rotation.x = -Math.PI / 2;
-    m.position.set(x, 0, z);
+    m.position.set(x, y, z);
     m.receiveShadow = true;
-    ground.add(m);
+    kit.ground.add(m);
+    return m;
   };
-  floor(24, 18, 0, 0, canvasTexture(256, 256, planks, [6, 5]));
-  floor(12, 18, 18, 0, canvasTexture(256, 256, flagstones, [4, 6]));
-  floor(12, 18, -18, 0, canvasTexture(256, 256, grass, [3, 4]));
-  // the world beyond: dark earth so the diorama floats in night
-  const beyond = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), mat('#16140f'));
-  beyond.rotation.x = -Math.PI / 2;
-  beyond.position.y = -0.02;
-  beyond.receiveShadow = true;
-  scene.add(beyond);
+  kit.collide = (x0, z0, x1, z1) => kit.colliders.push([Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1)]);
 
-  // ---- hall walls (low, so the camera can see over them) -----------------
-  const plaster = mat(PALETTE.plaster);
-  const WALL_H = 2.4;
-  const T = 0.3;
-  const wall = (x0, z0, x1, z1) => {
-    const w = Math.max(T, Math.abs(x1 - x0));
-    const d = Math.max(T, Math.abs(z1 - z0));
-    box(w, WALL_H, d, plaster, (x0 + x1) / 2, WALL_H / 2, (z0 + z1) / 2, scene, { collide: true });
-    box(w + 0.04, 0.12, d + 0.04, mat(PALETTE.woodDark), (x0 + x1) / 2, WALL_H, (z0 + z1) / 2);
-  };
-  wall(-12, -9, 12, -9);
-  wall(-12, 9, 12, 9);
-  wall(12, -9, 12, -2.4);
-  wall(12, 2.4, 12, 9);
-  wall(-12, -9, -12, -2.4);
-  wall(-12, 2.4, -12, 9);
-  // door frames
-  for (const sx of [-12, 12]) {
-    for (const sz of [-2.4, 2.4]) box(0.4, 3, 0.4, mat(PALETTE.woodDark), sx, 1.5, sz);
-    box(0.4, 0.3, 5.2, mat(PALETTE.woodDark), sx, 3, 0);
-  }
-
-  // ---- courtyard and garden borders -----------------------------------------
-  const fence = (x0, z0, x1, z1) => {
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const posts = Math.ceil(len / 1.5);
-    for (let i = 0; i <= posts; i++) {
-      const t = i / posts;
-      box(0.14, 1.1, 0.14, mat(PALETTE.wood), x0 + (x1 - x0) * t, 0.55, z0 + (z1 - z0) * t);
+  // A wall with its own material so it can fade out of the camera's way.
+  kit.wall = (x0, z0, x1, z1, { h = 3.2, color = PALETTE.plaster, tex = null, trim = PALETTE.woodDark, fade = true, t = 0.25 } = {}) => {
+    const w = Math.max(t, Math.abs(x1 - x0));
+    const d = Math.max(t, Math.abs(z1 - z0));
+    const material = new THREE.MeshStandardMaterial({ color: tex ? '#ffffff' : color, map: tex || null, flatShading: true, roughness: 0.9, transparent: true });
+    const m = kit.box(w, h, d, material, (x0 + x1) / 2, h / 2, (z0 + z1) / 2, scene, { collide: true });
+    if (trim) {
+      const tm = new THREE.MeshStandardMaterial({ color: trim, flatShading: true, transparent: true });
+      const top = kit.box(w + 0.04, 0.12, d + 0.04, tm, (x0 + x1) / 2, h, (z0 + z1) / 2);
+      m.userData.partner = top;
     }
-    const w = Math.max(0.08, Math.abs(x1 - x0));
-    const d = Math.max(0.08, Math.abs(z1 - z0));
-    box(w, 0.08, d, mat(PALETTE.wood), (x0 + x1) / 2, 0.95, (z0 + z1) / 2);
-    box(w, 0.08, d, mat(PALETTE.wood), (x0 + x1) / 2, 0.5, (z0 + z1) / 2);
-    colliders.push([Math.min(x0, x1) - 0.1, Math.min(z0, z1) - 0.1, Math.max(x0, x1) + 0.1, Math.max(z0, z1) + 0.1]);
+    if (fade) kit.fade(m);
+    return m;
   };
-  fence(12, -9, 24, -9);
-  fence(12, 9, 24, 9);
-  fence(24, -9, 24, 9);
-  fence(-12, -9, -24, -9);
-  fence(-12, 9, -24, 9);
-  fence(-24, -9, -24, 9);
 
-  // ---- lamps in the hall --------------------------------------------------------
-  const lamp = (x, z, color = 0xffb46b, intensity = 9) => {
-    const l = new THREE.PointLight(color, intensity, 9, 1.6);
-    l.position.set(x, 3.2, z);
+  // Fade everything in a group (a shopfront, a door frame) with one plane.
+  kit.fadeGroup = (g, axis, at) => {
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      o.userData.plane = { axis, at };
+      kit.fades.push(o);
+    });
+  };
+
+  // Register a box to fade; its plane is its thin axis.
+  kit.fade = (m) => {
+    const { width, depth } = m.geometry.parameters;
+    m.userData.plane = depth <= width ? { axis: 'z', at: m.position.z } : { axis: 'x', at: m.position.x };
+    kit.fades.push(m);
+    return m;
+  };
+
+  kit.lamp = (x, y, z, color = 0xffb46b, intensity = 8, distance = 9, globe = true) => {
+    const l = new THREE.PointLight(color, intensity, distance, 1.6);
+    l.position.set(x, y, z);
     scene.add(l);
-    const glass = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 8, 6),
-      new THREE.MeshBasicMaterial({ color }),
-    );
-    glass.position.set(x, 3.2, z);
-    scene.add(glass);
-    cyl(0.01, 0.01, 1.2, mat(PALETTE.iron), x, 3.9, z);
-    lamps.push({ light: l, base: intensity, phase: Math.random() * 10 });
+    if (globe) {
+      const g = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), new THREE.MeshBasicMaterial({ color }));
+      g.position.set(x, y, z);
+      scene.add(g);
+    }
+    kit.lamps.push({ light: l, base: intensity, phase: Math.random() * 10 });
+    return l;
   };
-  lamp(-6, -3);
-  lamp(6, -3);
-  lamp(-6, 4);
-  lamp(6, 4);
-  lamp(0, -6.5, 0xffc078, 7);
-  // the plate corner works under a red safelight
-  lamp(-7, -7, 0xff3b2a, 6);
 
-  // ---- benches ------------------------------------------------------------------
-  const benchTop = mat(PALETTE.wood);
-  const benchLeg = mat(PALETTE.woodDark);
-  for (const b of BENCHES) {
+  kit.light = ({ sky = '#f3dcb4', ground = '#2b2117', ambient = 0.8, sun = '#ffd9a0', sunI = 2.0, pos = [10, 18, 8], background = '#14120e', fog = [24, 60] } = {}) => {
+    scene.background = new THREE.Color(background);
+    scene.fog = new THREE.Fog(background, fog[0], fog[1]);
+    scene.add(new THREE.HemisphereLight(sky, ground, ambient));
+    if (sunI > 0) {
+      const s = new THREE.DirectionalLight(sun, sunI);
+      s.position.set(...pos);
+      s.castShadow = true;
+      s.shadow.mapSize.set(2048, 2048);
+      const [x0, z0, x1, z1] = bounds;
+      const span = Math.max(x1 - x0, z1 - z0) / 2 + 4;
+      Object.assign(s.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 80 });
+      s.target.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+      scene.add(s.target);
+      s.shadow.bias = -0.0006;
+      scene.add(s);
+    }
+    // the world beyond the walls
+    const beyond = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), mat('#16140f'));
+    beyond.rotation.x = -Math.PI / 2;
+    beyond.position.y = -0.03;
+    beyond.receiveShadow = true;
+    scene.add(beyond);
+  };
+
+  // A picture the simulator made, framed on a wall
+  kit.print = (src, x, y, z, rot, w = 0.7, h = 0.52, frame = PALETTE.woodDark) => {
     const g = new THREE.Group();
-    g.position.set(b.at[0], 0, b.at[1]);
-    g.rotation.y = b.face;
+    g.position.set(x, y, z);
+    g.rotation.y = rot;
     scene.add(g);
-    box(2.0, 0.08, 0.8, benchTop, 0, 0.9, 0, g);
-    for (const [lx, lz] of [[-0.9, -0.32], [0.9, -0.32], [-0.9, 0.32], [0.9, 0.32]]) box(0.08, 0.9, 0.08, benchLeg, lx, 0.45, lz, g);
-    box(1.9, 0.05, 0.7, benchLeg, 0, 0.25, 0, g);
-    PROPS[b.props](g, { box, cyl, b });
-
-    // sample print on a small easel at the back of the bench
-    const easel = new THREE.Group();
-    easel.position.set(0, 0.94, -0.3);
-    easel.rotation.x = -0.18;
-    g.add(easel);
-    box(0.72, 0.56, 0.04, mat(PALETTE.woodDark), 0, 0.3, 0, easel);
-    const tex = loader.load(`img/print/${b.id}.jpg`);
+    kit.box(w + 0.1, h + 0.1, 0.04, frame, 0, 0, 0, g);
+    const tex = kit.loader.load(src);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const print = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.48), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
-    print.position.set(0, 0.3, 0.025);
-    easel.add(print);
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+    p.position.z = 0.025;
+    g.add(p);
+    return g;
+  };
 
-    // hanging sign with the process name
-    const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.3, 0.4),
-      new THREE.MeshStandardMaterial({ map: textSign([[b.name, 64], [String(b.year), 34, true]]), roughness: 1 }),
-    );
-    sign.position.set(0, 2.1, -0.35);
-    g.add(sign);
-    for (const sx of [-0.55, 0.55]) cyl(0.006, 0.006, 0.45, mat(PALETTE.iron), sx, 2.5, -0.35, g, 4);
-    const seal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.025, 14), mat(b.tint, { roughness: 0.4 }));
-    seal.rotation.x = Math.PI / 2;
-    seal.position.set(0.56, 1.98, -0.33);
-    seal.visible = false;
-    g.add(seal);
-
-    colliders.push(rotatedBox(b.at, b.face, 2.1, 0.9));
-    const stand = standPoint(b.at, b.face, 1.15);
-    interactables.push({ kind: 'bench', id: b.id, label: `Work at the ${b.name.toLowerCase()} bench`, stand, face: b.face, mesh: g, seal });
-  }
-
-  // ---- the Master's desk -------------------------------------------------------
-  const desk = new THREE.Group();
-  desk.position.set(0, 0, -7.6);
-  scene.add(desk);
-  box(2.6, 0.1, 1.1, mat(PALETTE.woodDark), 0, 0.95, 0, desk);
-  box(2.5, 0.9, 1.0, mat(PALETTE.wood), 0, 0.45, 0, desk);
-  box(0.5, 0.06, 0.36, mat('#5b1f1a'), -0.5, 1.03, 0.1, desk); // the ledger, closed
-  box(0.46, 0.02, 0.32, mat(PALETTE.paper), 0.3, 1.01, 0.15, desk); // a letter
-  cyl(0.05, 0.06, 0.1, mat(PALETTE.iron), 0.9, 1.05, -0.1, desk); // inkwell
-  cyl(0.04, 0.04, 0.22, mat('#efe2c4'), -1.0, 1.11, -0.2, desk); // candle
-  const flame = new THREE.PointLight(0xffa040, 2.5, 3, 2);
-  flame.position.set(-1.0, 1.3, -0.2);
-  desk.add(flame);
-  lamps.push({ light: flame, base: 2.5, phase: 2 });
-  colliders.push([-1.35, -8.2, 1.35, -7.0]);
-  interactables.push({ kind: 'master', id: 'master', label: 'Speak with the Master', stand: [0, -6.2], face: 0, mesh: desk });
-
-  // ---- the ledger lectern ---------------------------------------------------------
-  const lectern = new THREE.Group();
-  lectern.position.set(0, 0, 8.1);
-  scene.add(lectern);
-  cyl(0.08, 0.12, 1.1, mat(PALETTE.woodDark), 0, 0.55, 0, lectern);
-  const top = box(0.7, 0.06, 0.5, mat(PALETTE.wood), 0, 1.15, 0, lectern);
-  top.rotation.x = 0.35;
-  const book = box(0.6, 0.06, 0.42, mat('#5b1f1a'), 0, 1.21, 0.02, lectern);
-  book.rotation.x = 0.35;
-  colliders.push([-0.4, 7.8, 0.4, 8.4]);
-  interactables.push({ kind: 'ledger', id: 'ledger', label: 'Open your ledger', stand: [0, 7.0], face: Math.PI, mesh: lectern });
-
-  // ---- history plaques along the east half of the hall --------------------------------
-  HISTORY.forEach(([year, title], i) => {
-    const north = i < 6;
-    const k = north ? i : i - 6;
-    const x = 2.6 + k * 1.55;
-    const z = north ? -8.8 : 8.8;
+  // The history chapter for this atelier, on a plaque
+  kit.plaque = (year, x, z, rot) => {
+    const ch = HISTORY.find(([y]) => y === year) || HISTORY[0];
     const g = new THREE.Group();
     g.position.set(x, 1.55, z);
-    g.rotation.y = north ? 0 : Math.PI;
+    g.rotation.y = rot;
     scene.add(g);
-    box(1.22, 0.86, 0.06, mat(PALETTE.woodDark), 0, 0, 0, g);
+    kit.box(1.22, 0.86, 0.06, PALETTE.woodDark, 0, 0, 0, g);
     const plate = new THREE.Mesh(
       new THREE.PlaneGeometry(1.1, 0.74),
-      new THREE.MeshStandardMaterial({ map: textSign([[year, 70], [title, title.length > 24 ? 26 : 32, true]], { w: 512, h: 344, bg: '#e9e2d0' }), roughness: 1 }),
+      new THREE.MeshStandardMaterial({ map: textSign([[ch[0], 70], [ch[1], ch[1].length > 24 ? 26 : 32, true]], { w: 512, h: 344, bg: '#e9e2d0' }), roughness: 1 }),
     );
     plate.position.z = 0.035;
     g.add(plate);
-    interactables.push({ kind: 'history', id: year, label: `Read: ${year}, ${title.toLowerCase()}`, stand: [x, north ? -7.7 : 7.7], face: north ? 0 : Math.PI, mesh: g });
-  });
-
-  // ---- courtyard dressing: wash trough, drying racks -----------------------------------
-  const trough = new THREE.Group();
-  trough.position.set(22.3, 0, -6.5);
-  scene.add(trough);
-  box(1.6, 0.6, 0.9, mat(PALETTE.stone), 0, 0.3, 0, trough);
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.7), mat('#4f7a8c', { roughness: 0.15, metalness: 0.2 }));
-  water.rotation.x = -Math.PI / 2;
-  water.position.y = 0.58;
-  trough.add(water);
-  cyl(0.05, 0.05, 1.2, mat(PALETTE.iron), 0.7, 0.9, 0, trough);
-  colliders.push([21.4, -7.0, 23.2, -6.0]);
-  for (const z of [-3, 3]) {
-    const rack = new THREE.Group();
-    rack.position.set(14.2, 0, z);
-    scene.add(rack);
-    for (let i = 0; i < 3; i++) {
-      const f = box(0.6, 0.03, 0.45, mat(PALETTE.glass, { roughness: 0.1, transparent: true, opacity: 0.6 }), 0, 0.5 + i * 0.05, (i - 1) * 0.5, rack);
-      f.rotation.x = -0.6;
-      box(0.62, 0.01, 0.47, mat('#d8d0a8'), 0, 0.48 + i * 0.05, (i - 1) * 0.5, rack).rotation.x = -0.6;
-    }
-    colliders.push([13.8, z - 0.9, 14.6, z + 0.9]);
-  }
-
-  // ---- garden: a tree and planters -------------------------------------------------
-  const tree = (x, z, s = 1) => {
-    cyl(0.12 * s, 0.2 * s, 2.2 * s, mat('#4b3424'), x, 1.1 * s, z);
-    const leaves = mat('#3f5a32');
-    for (const [dx, dy, dz, r] of [[0, 2.6, 0, 1.0], [0.6, 2.3, 0.3, 0.7], [-0.5, 2.4, -0.3, 0.75], [0.1, 3.1, -0.2, 0.6]]) {
-      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r * s, 0), leaves);
-      m.position.set(x + dx * s, dy * s, z + dz * s);
-      m.castShadow = true;
-      scene.add(m);
-    }
-    colliders.push([x - 0.3, z - 0.3, x + 0.3, z + 0.3]);
+    const stand = [x + Math.sin(rot) * 1.1, z + Math.cos(rot) * 1.1];
+    kit.interactables.push({ kind: 'history', id: ch[0], label: `Read: ${ch[0]}, ${ch[1].toLowerCase()}`, stand, face: rot, mesh: g });
+    return g;
   };
-  tree(-22, -6.8, 1.2);
-  tree(-22.2, 6.5);
-  const planter = (x, z, color) => {
-    box(1.6, 0.45, 0.6, mat(PALETTE.wood), x, 0.22, z, scene, { collide: true });
-    for (let i = 0; i < 5; i++) {
-      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2 + (i % 2) * 0.06, 0), mat(i % 2 ? '#56743d' : '#476a35'));
-      m.position.set(x - 0.6 + i * 0.3, 0.6, z);
-      m.castShadow = true;
-      scene.add(m);
-      if (i % 2) {
-        const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), mat(color));
-        bloom.position.set(x - 0.6 + i * 0.3, 0.82, z);
-        scene.add(bloom);
-      }
-    }
-  };
-  planter(-15, -7.8, '#a8344e');
-  planter(-15, 7.8, '#d8b440');
-  planter(-22.6, 0, '#8a4fa0');
 
-  return { colliders, interactables, lamps, ground };
+  // A doorway out of (or into) a room. `face` is the direction the
+  // apprentice faces to walk through it.
+  kit.exit = (x, z, face, label, to, { color = PALETTE.woodDark, w = 1.4 } = {}) => {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = face;
+    scene.add(g);
+    kit.box(w, 2.3, 0.08, '#1b1712', 0, 1.15, -0.02, g, { shadow: false });
+    for (const sx of [-w / 2 - 0.08, w / 2 + 0.08]) kit.box(0.16, 2.5, 0.2, color, sx, 1.25, 0, g);
+    kit.box(w + 0.32, 0.18, 0.22, color, 0, 2.45, 0, g);
+    const quarter = Math.abs(Math.sin(face)) > 0.5;
+    kit.fadeGroup(g, quarter ? 'x' : 'z', quarter ? x : z);
+    const stand = [x + Math.sin(face) * 0.9, z + Math.cos(face) * 0.9];
+    kit.interactables.push({ kind: 'exit', id: to, label, stand, face, mesh: g });
+    return g;
+  };
+
+  // A drying line between two posts; main.js hangs prints along it.
+  kit.line = (x0, z0, x1, z1, y = 2.2, slots = 8) => {
+    const g = new THREE.Group();
+    scene.add(g);
+    for (const [x, z] of [[x0, z0], [x1, z1]]) {
+      kit.cyl(0.05, 0.07, y + 0.1, PALETTE.woodDark, x, (y + 0.1) / 2, z, g, 6);
+      kit.collide(x - 0.15, z - 0.15, x + 0.15, z + 0.15);
+    }
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, len, 4), mat('#cbbd9c'));
+    cord.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+    cord.rotation.z = Math.PI / 2;
+    cord.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+    g.add(cord);
+    kit.dryingLine = { group: g, from: [x0, z0], to: [x1, z1], y, slots, angle: -Math.atan2(z1 - z0, x1 - x0) };
+    return g;
+  };
+
+  kit.bench = (b, x, z, face) => buildBench(kit, b, x, z, face);
+  return kit;
 }
 
 // ---------------------------------------------------------------------------
-// Bench props, one small still life per process family.
+// The working bench for a process: table, its still life of tools, the
+// sample print on an easel, the hanging sign and the seal once earned.
+
+function buildBench(kit, b, x, z, face) {
+  const { box, cyl, scene } = kit;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = face;
+  scene.add(g);
+  const benchTop = mat(PALETTE.wood);
+  const benchLeg = mat(PALETTE.woodDark);
+  box(2.0, 0.08, 0.8, benchTop, 0, 0.9, 0, g);
+  for (const [lx, lz] of [[-0.9, -0.32], [0.9, -0.32], [-0.9, 0.32], [0.9, 0.32]]) box(0.08, 0.9, 0.08, benchLeg, lx, 0.45, lz, g);
+  box(1.9, 0.05, 0.7, benchLeg, 0, 0.25, 0, g);
+  PROPS[b.props](g, { box, cyl, b });
+
+  const easel = new THREE.Group();
+  easel.position.set(0, 0.94, -0.3);
+  easel.rotation.x = -0.18;
+  g.add(easel);
+  box(0.72, 0.56, 0.04, mat(PALETTE.woodDark), 0, 0.3, 0, easel);
+  const tex = kit.loader.load(`img/print/${b.id}.jpg`);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const print = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.48), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+  print.position.set(0, 0.3, 0.025);
+  easel.add(print);
+
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.3, 0.4),
+    new THREE.MeshStandardMaterial({ map: textSign([[b.name, 64], [String(b.year), 34, true]]), roughness: 1 }),
+  );
+  sign.position.set(0, 2.1, -0.35);
+  g.add(sign);
+  for (const sx of [-0.55, 0.55]) cyl(0.006, 0.006, 0.45, mat(PALETTE.iron), sx, 2.5, -0.35, g, 4);
+  const seal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.025, 14), mat(b.tint, { roughness: 0.4 }));
+  seal.rotation.x = Math.PI / 2;
+  seal.position.set(0.56, 1.98, -0.33);
+  seal.visible = false;
+  g.add(seal);
+
+  kit.colliders.push(rotatedBox([x, z], face, 2.1, 0.9));
+  const it = { kind: 'bench', id: b.id, label: `Work at the ${b.name.toLowerCase()} bench`, stand: standPoint([x, z], face, 1.15), face, mesh: g, seal };
+  kit.interactables.push(it);
+  return it;
+}
 
 const PROPS = {};
 
