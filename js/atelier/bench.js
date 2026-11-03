@@ -61,16 +61,20 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     live = true;
     useTexture(core.canvas);
     const a = core.canvas.width / core.canvas.height;
-    sheet.scale.set(a >= 1 ? SHEET_W : SHEET_W * a, a >= 1 ? SHEET_W / a : SHEET_W, 1);
+    base.w = a >= 1 ? SHEET_W : SHEET_W * a;
+    base.h = a >= 1 ? SHEET_W / a : SHEET_W;
   }
 
   // where the sheet is heading and how it gets there
-  const pose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  const pose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), size: 1 };
+  const base = { w: SHEET_W, h: SHEET_W * 0.75 }; // the sheet's size, before a station shrinks it
+  let size = 1;
   let carried = false;
   function placeAt(st, instant = false) {
     carried = false;
     pose.pos.set(...st.sheet.pos);
-    pose.quat.setFromEuler(new THREE.Euler(...st.sheet.rot));
+    pose.quat.setFromEuler(new THREE.Euler(...st.sheet.rot, st.sheet.order || 'XYZ'));
+    pose.size = st.sheet.scale || 1;
     if (instant || REDUCED) {
       sheet.position.copy(pose.pos);
       sheet.quaternion.copy(pose.quat);
@@ -333,7 +337,8 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       addButton('New photograph', () => {
         live = false;
         useTexture(blank);
-        sheet.scale.set(SHEET_W, SHEET_W * 0.75, 1);
+        base.w = SHEET_W;
+        base.h = SHEET_W * 0.75;
         core.newPhotograph();
       }, 'ghost', row);
     }
@@ -424,6 +429,20 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: '#fff4d6', size: 0.035, transparent: true, opacity: 0, depthWrite: false }));
   fxGroup.add(dust);
   let shaftLevel = 0;
+  // a small warm light by the wash, where a room is otherwise dark
+  let glow = null;
+  if (stations.wash.glow) {
+    glow = new THREE.PointLight(0xffb070, 0, 4, 1.6);
+    glow.position.set(...stations.wash.glow);
+    fxGroup.add(glow);
+  }
+  // indoors, a lamp on the subject comes up while the lens is open
+  let lamp = null;
+  if (stations.expose.lamp) {
+    lamp = new THREE.PointLight(0xffe6c0, 0, 6, 1.6);
+    lamp.position.set(...stations.expose.lamp);
+    fxGroup.add(lamp);
+  }
 
   const ripples = [0, 1, 2].map((i) => {
     const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.33, 40), new THREE.MeshBasicMaterial({ color: '#e8f4f8', transparent: true, opacity: 0, depthWrite: false }));
@@ -508,6 +527,8 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       sheet.position.lerp(pose.pos, k);
       sheet.quaternion.slerp(pose.quat, k);
     }
+    size += ((carried ? 1 : pose.size) - size) * Math.min(1, dt * 5);
+    sheet.scale.set(base.w * size, base.h * size, 1);
     glass.position.copy(sheet.position).add(new THREE.Vector3(0, 0.012, 0).applyQuaternion(sheet.quaternion));
     glass.quaternion.copy(sheet.quaternion);
     glass.scale.set(sheet.scale.x * 1.15, sheet.scale.y * 1.15, 1);
@@ -527,7 +548,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
   function fx(dt) {
     fxT += dt;
     // the shaft of light stands over the sheet at the exposure, brighter while held
-    const atLight = station === 'expose' && !walking;
+    const atLight = station === 'expose' && !walking && stations.expose.shaft !== false;
     shaftLevel += ((atLight ? (exposingNow ? 1 : 0.35) : 0) - shaftLevel) * Math.min(1, dt * 3);
     shaft.material.opacity = 0.16 * shaftLevel;
     dust.material.opacity = 0.8 * shaftLevel;
@@ -545,8 +566,16 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
       }
       dustGeo.attributes.position.needsUpdate = true;
     }
+    if (glow) {
+      const want = (station === 'wash' || station === 'result') && !walking ? 5 : 0;
+      glow.intensity += (want - glow.intensity) * Math.min(1, dt * 3);
+    }
+    if (lamp) {
+      const want = station === 'expose' && !walking ? (exposingNow ? 9 : 2) : 0;
+      lamp.intensity += (want - lamp.intensity) * Math.min(1, dt * 4);
+    }
     // ripples spread round the sheet while it washes
-    const inWash = station === 'wash' && !walking && (state.washing || stageType(core.stage()) === 'reveal');
+    const inWash = station === 'wash' && stations.wash.ripples !== false && !walking && (state.washing || stageType(core.stage()) === 'reveal');
     rippleLevel += ((inWash ? 1 : 0) - rippleLevel) * Math.min(1, dt * 3);
     for (const r of ripples) {
       const t = (fxT * 0.45 + r.userData.phase) % 1;
@@ -599,6 +628,7 @@ export function openBench({ config, stations, kit, scene, camera, me, walkTo, se
     close: close_,
     get shot() { return shot; },
     get closeUp() { return close; },
+    get hideMe() { return !walking && !!(stations[station] && stations[station].hideMe); },
     get walking() { return walking; },
     get cursor() { return cursor; },
   };

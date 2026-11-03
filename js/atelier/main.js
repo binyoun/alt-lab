@@ -1214,7 +1214,7 @@ function frame() {
   else player.speed = 0;
   if (bench) bench.update(dt);
   // at a station the camera looks over your shoulder; step out of its way
-  me.root.visible = !(bench && !bench.walking && Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4);
+  me.root.visible = !(bench && !bench.walking && (bench.hideMe || Math.hypot(camera.position.x - player.x, camera.position.z - player.z) < 1.4));
   me.root.position.set(player.x, 0, player.z);
   me.root.rotation.y = player.r;
   me.animate(dt, player.speed, t);

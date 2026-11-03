@@ -34,8 +34,37 @@ export function buildAtelier(scene, id) {
   kit.plaque(b.chapter, -W + 0.15, 0.4, Math.PI / 2);
   kit.line(W - 1.4, -D + 1.6, W - 1.4, D - 1.8, 2.25, 7);
   style.dress(kit, b);
+  if (WORKPLACES[id]) WORKPLACES[id](kit);
   return kit;
 }
+
+// the tables, trays and cameras the in-world ritual uses (see STATIONS)
+const WORKPLACES = {
+  cyanotype() {},
+  vandyke(kit) { frameTable(kit, 2.6, -0.6); trayTable(kit, 3.0, 2.4, '#7a5a3a'); },
+  platinum(kit) { frameTable(kit, -4.4, -3.7); trayTable(kit, 3.0, 2.4, '#c9c0a0'); },
+  saltprint(kit) { frameTable(kit, -3.6, -3.9); trayTable(kit, 3.0, 2.4, '#b8c7c9'); },
+  albumen(kit) {
+    window(kit, -4.2, 1.9, -D + 0.14, 0, 1.6, 2.0, { light: '#fff1d8', cols: 2, rows: 3 });
+    kit.lamp(-4.2, 2.0, -3.9, 0xfff0d0, 3, 5, false);
+    frameTable(kit, -4.2, -3.7);
+    trayTable(kit, 3.0, 2.4, '#a0607a');
+  },
+  daguerreotype(kit) {
+    standCamera(kit, -3.0, 1.2, Math.PI / 2);
+    // the subject: a still life on a stand, for a long exposure
+    kit.box(0.6, 0.9, 0.6, PALETTE.woodDark, -5.4, 0.45, 1.2, kit.scene, { collide: true });
+    kit.cyl(0.1, 0.14, 0.32, mat('#7a8a9a', { roughness: 0.3 }), -5.4, 1.06, 1.2);
+    for (let i = 0; i < 4; i++) {
+      const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), mat(['#e8e2d4', '#c8b4d8', '#e8d070', '#e8e2d4'][i]));
+      f.position.set(-5.4 + Math.sin(i * 1.6) * 0.1, 1.32 + (i % 2) * 0.08, 1.2 + Math.cos(i * 1.6) * 0.1);
+      kit.scene.add(f);
+    }
+  },
+  tintype(kit) { trayTable(kit, 3.0, -1.4, '#5a6a5a'); },
+  anthotype(kit) { frameTable(kit, 2.6, -0.6); trayTable(kit, -2.4, 2.4, '#8aa8a8'); },
+  lumen(kit) { frameTable(kit, -5.6, -1.6); trayTable(kit, 3.0, 2.4, '#b8b0a0'); },
+};
 
 // ---------------------------------------------------------------------------
 // small furniture
@@ -91,6 +120,44 @@ function table(kit, x, z, w = 1.4, d = 0.8, color = PALETTE.wood) {
   kit.box(w, 0.06, d, color, x, 0.8, z);
   for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) kit.box(0.06, 0.8, 0.06, PALETTE.woodDark, x + dx * (w / 2 - 0.06), 0.4, z + dz * (d / 2 - 0.06));
   kit.collide(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
+}
+
+// ---------------------------------------------------------------------------
+// working stations: a printing table, trays of liquid, a camera on a stand
+
+// a table for a sheet under glass in the light
+function frameTable(kit, x, z) {
+  table(kit, x, z, 1.1, 0.8);
+  kit.box(0.7, 0.04, 0.55, PALETTE.woodDark, x, 0.85, z); // the printing frame
+}
+
+// a table with a tray of liquid: the wash, the developer, the fix, the toner
+function trayTable(kit, x, z, liquid = '#6a9aac') {
+  table(kit, x, z, 1.2, 0.8);
+  kit.box(0.8, 0.08, 0.58, '#e7e3d8', x, 0.87, z);
+  const l = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.5), mat(liquid, { roughness: 0.15, metalness: 0.15 }));
+  l.rotation.x = -Math.PI / 2;
+  l.position.set(x, 0.915, z);
+  kit.scene.add(l);
+}
+
+// a field camera on a stand, its lens toward `face` (radians, 0 = toward -z)
+function standCamera(kit, x, z, face) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = face;
+  kit.scene.add(g);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const leg = kit.cyl(0.02, 0.025, 1.3, PALETTE.wood, Math.cos(a) * 0.2, 0.63, Math.sin(a) * 0.2, g, 5);
+    leg.rotation.z = Math.cos(a) * 0.16;
+    leg.rotation.x = -Math.sin(a) * 0.16;
+  }
+  kit.box(0.42, 0.34, 0.4, PALETTE.wood, 0, 1.38, 0, g);
+  kit.box(0.34, 0.28, 0.3, '#2a1a14', 0, 1.38, -0.34, g); // bellows
+  const lens = kit.cyl(0.08, 0.08, 0.16, mat(PALETTE.brass, { metalness: 0.7, roughness: 0.35 }), 0, 1.38, -0.56, g);
+  lens.rotation.x = Math.PI / 2;
+  kit.collide(x - 0.3, z - 0.3, x + 0.3, z + 0.3);
 }
 
 function rug(kit, x, z, w, d, color) {
@@ -338,31 +405,83 @@ const STYLES = {
 // where the apprentice stands (and faces), where the sheet lies, and the
 // camera shot. Stages map to stations by type: upload, info and paint at
 // the bench; hold at the light; reveal in the wash; result held up to look.
-// Ateliers without stations still open the ritual as a page.
+// `lamp` is a light that comes up while exposing (indoors, at the subject);
+// `shaft: false` leaves out the shaft of sunlight.
 
-export const STATIONS = {
-  cyanotype: {
+const fwd = (f) => [-Math.sin(f), -Math.cos(f)];
+
+// a sheet lying flat on a surface at (x, y, z), worked from the `face` side
+function flat(x, z, y, face, extra = {}) {
+  const [fx, fz] = fwd(face);
+  const sx = x - fx * 1.0;
+  const sz = z - fz * 1.0;
+  return {
+    stand: [sx, sz], face,
+    sheet: { pos: [x, y, z], rot: [-Math.PI / 2 + (extra.tilt || 0), face, 0], order: 'YXZ' },
+    cam: { pos: [sx - fx * 0.55, 2.15, sz - fz * 0.55], look: [x, y, z] },
+    ...extra,
+  };
+}
+
+// a plate standing upright at the back of a camera at (x, z), lens toward `face`
+function inCamera(x, z, face, extra = {}) {
+  const [fx, fz] = fwd(face);
+  const bx = x - fx * 0.3;
+  const bz = z - fz * 0.3;
+  const sx = x - fx * 1.05;
+  const sz = z - fz * 1.05;
+  return {
+    stand: [sx, sz], face,
+    sheet: { pos: [bx, 1.38, bz], rot: [0, face, 0], scale: 0.55 },
+    // over the photographer's shoulder, past the camera to the subject
+    cam: { pos: [sx - fx * 0.7 + fz * 0.35, 1.95, sz - fz * 0.7 - fx * 0.35], look: [x + fx * 1.4, 1.2, z + fz * 1.4] },
+    shaft: false,
+    hideMe: true,
+    ...extra,
+  };
+}
+
+// the finished print held up to look at, where you stand at `st`
+function held(st) {
+  const [fx, fz] = fwd(st.face);
+  const [sx, sz] = st.stand;
+  return {
+    stand: [sx, sz], face: st.face,
+    sheet: { pos: [sx + fx * 0.6, 1.45, sz + fz * 0.6], rot: [0, st.face, 0] },
+    cam: { pos: [sx - fx * 0.6, 1.5, sz - fz * 0.6], look: [sx + fx * 0.6, 1.42, sz + fz * 0.6] },
+  };
+}
+
+function stations(expose, wash) {
+  return {
     coat: {
       stand: [0, -2.45], face: 0,
       sheet: { pos: [0, 0.955, -3.5], rot: [-Math.PI / 2, 0, 0] },
       cam: { pos: [0, 2.15, -2.55], look: [0, 0.95, -3.5] },
     },
-    expose: {
-      stand: [2.4, 0.45], face: 0,
-      sheet: { pos: [2.4, 0.86, -0.6], rot: [-Math.PI / 2 + 0.25, 0, 0] },
-      glass: true,
-      cam: { pos: [4.7, 2.6, 1.6], look: [2.3, 0.8, -0.7] },
-    },
-    wash: {
-      stand: [3.6, -2.55], face: 0,
-      sheet: { pos: [3.6, 0.615, -3.6], rot: [-Math.PI / 2, 0, 0.1] },
-      cam: { pos: [3.6, 2.0, -2.2], look: [3.6, 0.55, -3.6] },
-    },
-    result: {
-      stand: [3.6, -2.55], face: 0,
-      sheet: { pos: [3.6, 1.45, -3.15], rot: [0, 0, 0] },
-      cam: { pos: [3.6, 1.5, -1.95], look: [3.6, 1.42, -3.15] },
-      close: true,
-    },
-  },
+    expose,
+    wash,
+    result: held(wash),
+  };
+}
+
+export const STATIONS = {
+  cyanotype: stations(
+    { ...flat(2.4, -0.6, 0.86, 0, { tilt: 0.25, glass: true }), cam: { pos: [4.7, 2.6, 1.6], look: [2.3, 0.8, -0.7] } },
+    flat(3.6, -3.6, 0.615, 0),
+  ),
+  vandyke: stations(flat(2.6, -0.6, 0.875, 0, { glass: true }), flat(3.0, 2.4, 0.92, Math.PI)),
+  platinum: stations(flat(-4.4, -3.7, 0.875, 0, { glass: true }), flat(3.0, 2.4, 0.92, Math.PI)),
+  saltprint: stations(flat(-3.6, -3.9, 0.875, 0, { glass: true }), flat(3.0, 2.4, 0.92, Math.PI)),
+  albumen: stations(flat(-4.2, -3.7, 0.875, 0, { glass: true }), flat(3.0, 2.4, 0.92, Math.PI)),
+  daguerreotype: stations(
+    inCamera(-3.0, 1.2, Math.PI / 2, { lamp: [-5.4, 1.6, 1.2] }),
+    { ...flat(3.8, -3.9, 1.08, 0), ripples: false, glow: [3.3, 1.5, -3.2] }, // over the warm mercury, by a spirit lamp
+  ),
+  tintype: stations(
+    inCamera(-1.6, 2.7, Math.PI / 2, { lamp: [-5.0, 1.8, 2.7] }),
+    flat(3.0, -1.4, 0.92, 0),
+  ),
+  anthotype: stations(flat(2.6, -0.6, 0.875, 0, { glass: true }), flat(-2.4, 2.4, 0.92, Math.PI)),
+  lumen: stations(flat(-5.6, -1.6, 0.875, Math.PI / 2, { glass: true }), flat(3.0, 2.4, 0.92, Math.PI)),
 };
