@@ -1,7 +1,9 @@
 // The atelier's presence server: one Durable Object per room. It relays
 // where apprentices stand, short chat lines, the recipes of specimen
 // prints hung on the shared drying line, and coated papers handed between
-// partners, and the Photo 101 Club Hall's group-photo timer. Chat is never stored. The line keeps 14 recipes for 24 hours,
+// partners, the Photo 101 Club Hall's group-photo timer, and its photo walk
+// board (plans to shoot together; a card's contact goes only to people who
+// join it, and cards expire after their date). Chat is never stored. The line keeps 14 recipes for 24 hours,
 // or, in a class room (code starting "class-"), 80 recipes for 14 days so
 // the teacher can review them. No image of any kind is accepted: a print is
 // a handful of numbers, a coating is a list of brush points, and each
@@ -23,6 +25,12 @@ const lineTtl = (room) => (isClass(room) ? 14 * DAY : DAY);
 const COATABLE = ['cyanotype', 'vandyke', 'platinum', 'saltprint', 'albumen'];
 const MAX_POINTS = 1500;
 const INK = /^#[0-9a-f]{6}$/i;
+// the Photo 101 photo walk board
+const WALK_TAGS = ['street', 'portrait', 'night', 'architecture', 'nature', 'food', 'documentary', 'film', 'macro', 'events'];
+const WALK_CITIES = ['saigon', 'hanoi', 'online'];
+const WALK_MAX = 60;
+const PHONE = /\+?\d[\d\s().-]{7,}\d/; // no phone numbers on a public board
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // the camera a Photo 101 Commons visitor carries as their head
 const CAMS = ['phone', 'compact', 'dslr', 'mirrorless', 'bridge', 'film', 'instant', 'tlr'];
 
@@ -35,13 +43,14 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const origin = req.headers.get('Origin') || '';
-    const m = url.pathname.match(/^\/room\/([a-z0-9-]{1,24})\/(ws|count|line)$/);
+    const m = url.pathname.match(/^\/room\/([a-z0-9-]{1,24})\/(ws|count|line|walks)$/);
     if (!m) return new Response('The atelier server. Nothing to see here.', { status: 404 });
     if (origin && !ORIGINS.includes(origin)) return new Response('Forbidden', { status: 403 });
     const stub = env.ATELIER.get(env.ATELIER.idFromName(m[1]));
     if (m[2] !== 'ws') {
-      const r = await stub.fetch(`https://room/${m[2]}?room=${m[1]}`);
-      return new Response(await r.text(), { headers: cors(origin) });
+      const q = new URLSearchParams({ room: m[1], key: url.searchParams.get('key') || '', del: url.searchParams.get('del') || '' });
+      const r = await stub.fetch(`https://room/${m[2]}?${q}`);
+      return new Response(await r.text(), { status: r.status, headers: cors(origin) });
     }
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     const fwd = new Request(req);
@@ -66,8 +75,9 @@ const tidy = (s) => s.replace(BLOCK_RE, (w) => '*'.repeat([...w].length));
 const num = (v, lo, hi) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : 0);
 
 export class Atelier {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env || {};
   }
 
   people() {
@@ -103,6 +113,18 @@ export class Atelier {
       await this.state.storage.put('room', room);
     }
     if (url.pathname === '/count') return new Response(JSON.stringify({ n: this.people().length }));
+    if (url.pathname === '/walks') {
+      // the teacher's view of the walk board, contacts included; &del=<id> removes a card
+      if (!this.env.TEACHER_KEY || url.searchParams.get('key') !== this.env.TEACHER_KEY) return new Response(JSON.stringify({ error: 'key' }), { status: 403 });
+      const del = url.searchParams.get('del');
+      let walks = await this.walks();
+      if (del) {
+        walks = walks.filter((w) => w.id !== del);
+        await this.state.storage.put('walks', walks);
+        this.broadcast({ t: 'walkdel', id: del });
+      }
+      return new Response(JSON.stringify(walks.map(({ token, ...w }) => w), null, 2));
+    }
     if (url.pathname === '/line') {
       // the teacher's view: everything on the line, and who is in the room now
       const people = this.people().map((p) => ({ name: p.name, ink: p.ink, a: p.a }));
@@ -119,7 +141,7 @@ export class Atelier {
     if (typeof raw !== 'string' || raw.length > 40000) return;
     let m;
     try { m = JSON.parse(raw); } catch (e) { return; }
-    if (m.t !== 'handoff' && raw.length > 600) return;
+    if (m.t !== 'handoff' && raw.length > (m.t === 'walk' ? 1400 : 600)) return;
     const a = ws.deserializeAttachment() || {};
     const now = Date.now();
 
@@ -130,7 +152,7 @@ export class Atelier {
       a.x = 0; a.z = 3.5; a.r = Math.PI; a.a = '';
       ws.serializeAttachment(a);
       const peers = this.people().filter((p) => p.id !== a.id);
-      ws.send(JSON.stringify({ t: 'welcome', id: a.id, peers, line: await this.line() }));
+      ws.send(JSON.stringify({ t: 'welcome', id: a.id, peers, line: await this.line(), walks: (await this.walks()).map(this.publicWalk), walkCode: !!this.env.BOARD_CODE }));
       this.broadcast({ t: 'join', id: a.id, name: a.name, ink: a.ink, cam: a.cam, x: a.x, z: a.z, r: a.r }, ws);
       return;
     }
@@ -190,6 +212,8 @@ export class Atelier {
       a.lastHandoff = now;
       ws.serializeAttachment(a);
       to.send(JSON.stringify({ t: 'handoff', from: a.id, name: a.name, process: m.process, seed: m.seed, points }));
+    } else if (m.t === 'walk' || m.t === 'walkjoin' || m.t === 'walkdel') {
+      await this.walkMessage(ws, a, m, now);
     } else if (m.t === 'look') {
       // a new camera from the Commons camera shop
       if (now - (a.lastLook || 0) < 1000 || !CAMS.includes(m.cam)) return;
@@ -211,6 +235,65 @@ export class Atelier {
       const to = this.byId(m.to);
       if (!to || to === ws || !COATABLE.includes(m.process) || !TIERS.includes(m.tier)) return;
       to.send(JSON.stringify({ t: 'pairdone', from: a.id, name: a.name, process: m.process, tier: m.tier }));
+    }
+  }
+
+  // ---- the photo walk board ----
+  async walks() {
+    const now = Date.now();
+    const all = (await this.state.storage.get('walks')) || [];
+    const live = all.filter((w) => now < w.expires);
+    if (live.length !== all.length) await this.state.storage.put('walks', live);
+    return live;
+  }
+
+  publicWalk({ contact, kind, token, ...w }) {
+    return w;
+  }
+
+  async walkMessage(ws, a, m, now) {
+    const err = (why) => ws.send(JSON.stringify({ t: 'walkerr', why }));
+    if (m.t !== 'walkdel' && this.env.BOARD_CODE && String(m.code || '').trim().toLowerCase() !== this.env.BOARD_CODE.toLowerCase()) return err('code');
+    const walks = await this.walks();
+    if (m.t === 'walk') {
+      if (now - (a.lastWalk || 0) < 30000) return err('slow');
+      const tags = Array.isArray(m.tags) ? [...new Set(m.tags.filter((t) => WALK_TAGS.includes(t)))].slice(0, 3) : [];
+      if (!tags.length || !WALK_CITIES.includes(m.city)) return err('form');
+      const area = tidy(clean(m.area, 30));
+      const when = tidy(clean(m.when, 30));
+      const note = tidy(clean(m.note, 160));
+      const contact = clean(m.contact, 40);
+      const kind = m.kind === 'instagram' ? 'instagram' : 'teams';
+      if (!contact || [area, when, note, contact].some((t) => PHONE.test(t))) return err('phone');
+      if (m.city !== 'online' && m.safe !== true) return err('safe');
+      if (typeof m.token !== 'string' || !/^[a-z0-9]{8,32}$/.test(m.token)) return err('form');
+      const date = DATE.test(m.date || '') ? m.date : '';
+      // a card lasts until the day after its date, or two weeks if it has none
+      const expires = date ? Date.parse(date + 'T00:00:00+07:00') + 2 * DAY : now + 14 * DAY;
+      if (expires < now || expires > now + 120 * DAY) return err('date');
+      if (walks.filter((w) => w.token === m.token).length >= 3) return err('many');
+      a.lastWalk = now;
+      ws.serializeAttachment(a);
+      const card = { id: crypto.randomUUID().slice(0, 8), name: a.name, ink: a.ink, tags, city: m.city, area, date, when, note, contact, kind, token: m.token, joined: [], ts: now, expires };
+      walks.unshift(card);
+      await this.state.storage.put('walks', walks.slice(0, WALK_MAX));
+      this.broadcast({ t: 'walkadd', card: this.publicWalk(card) });
+      ws.send(JSON.stringify({ t: 'walkmine', id: card.id }));
+    } else if (m.t === 'walkjoin') {
+      const card = walks.find((w) => w.id === m.id);
+      if (!card) return err('gone');
+      if (!card.joined.includes(a.name) && card.joined.length < 12) {
+        card.joined.push(a.name);
+        await this.state.storage.put('walks', walks);
+        this.broadcast({ t: 'walkjoin', id: card.id, name: a.name });
+      }
+      // only the person who joins learns how to reach the poster
+      ws.send(JSON.stringify({ t: 'walkcontact', id: card.id, contact: card.contact, kind: card.kind }));
+    } else if (m.t === 'walkdel') {
+      const card = walks.find((w) => w.id === m.id);
+      if (!card || card.token !== m.token) return;
+      await this.state.storage.put('walks', walks.filter((w) => w !== card));
+      this.broadcast({ t: 'walkdel', id: card.id });
     }
   }
 
