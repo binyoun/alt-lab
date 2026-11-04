@@ -1,7 +1,7 @@
 // The atelier's presence server: one Durable Object per room. It relays
 // where apprentices stand, short chat lines, the recipes of specimen
 // prints hung on the shared drying line, and coated papers handed between
-// partners. Chat is never stored. The line keeps 14 recipes for 24 hours,
+// partners, and the Photo 101 Club Hall's group-photo timer. Chat is never stored. The line keeps 14 recipes for 24 hours,
 // or, in a class room (code starting "class-"), 80 recipes for 14 days so
 // the teacher can review them. No image of any kind is accepted: a print is
 // a handful of numbers, a coating is a list of brush points, and each
@@ -23,6 +23,8 @@ const lineTtl = (room) => (isClass(room) ? 14 * DAY : DAY);
 const COATABLE = ['cyanotype', 'vandyke', 'platinum', 'saltprint', 'albumen'];
 const MAX_POINTS = 1500;
 const INK = /^#[0-9a-f]{6}$/i;
+// the camera a Photo 101 Commons visitor carries as their head
+const CAMS = ['phone', 'compact', 'dslr', 'mirrorless', 'bridge', 'film', 'instant', 'tlr'];
 
 const cors = (origin) => ({
   'Access-Control-Allow-Origin': ORIGINS.includes(origin) ? origin : ORIGINS[0],
@@ -124,11 +126,12 @@ export class Atelier {
     if (m.t === 'hello' && !a.name) {
       a.name = tidy(clean(m.name, 24)) || 'Apprentice';
       a.ink = INK.test(m.ink) ? m.ink : '#274a86';
+      if (CAMS.includes(m.cam)) a.cam = m.cam;
       a.x = 0; a.z = 3.5; a.r = Math.PI; a.a = '';
       ws.serializeAttachment(a);
       const peers = this.people().filter((p) => p.id !== a.id);
       ws.send(JSON.stringify({ t: 'welcome', id: a.id, peers, line: await this.line() }));
-      this.broadcast({ t: 'join', id: a.id, name: a.name, ink: a.ink, x: a.x, z: a.z, r: a.r }, ws);
+      this.broadcast({ t: 'join', id: a.id, name: a.name, ink: a.ink, cam: a.cam, x: a.x, z: a.z, r: a.r }, ws);
       return;
     }
     if (!a.name) return;
@@ -187,6 +190,22 @@ export class Atelier {
       a.lastHandoff = now;
       ws.serializeAttachment(a);
       to.send(JSON.stringify({ t: 'handoff', from: a.id, name: a.name, process: m.process, seed: m.seed, points }));
+    } else if (m.t === 'look') {
+      // a new camera from the Commons camera shop
+      if (now - (a.lastLook || 0) < 1000 || !CAMS.includes(m.cam)) return;
+      a.lastLook = now;
+      a.cam = m.cam;
+      ws.serializeAttachment(a);
+      this.broadcast({ t: 'look', id: a.id, cam: a.cam }, ws);
+    } else if (m.t === 'snap') {
+      // the Photo 101 Club Hall's self-timer: everyone in the room gets the
+      // same countdown, and each browser takes the group photo itself. No
+      // picture ever reaches the server. One timer at a time per room.
+      if (now - (a.lastSnap || 0) < 10000 || now < (this.snapUntil || 0)) return;
+      a.lastSnap = now;
+      ws.serializeAttachment(a);
+      this.snapUntil = now + 7000;
+      this.broadcast({ t: 'snap', id: a.id, name: a.name, in: 6000 });
     } else if (m.t === 'pairdone') {
       // the partner who exposed tells the one who coated how it turned out
       const to = this.byId(m.to);
